@@ -234,7 +234,9 @@ export class MemStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = this.currentUserId++;
     const user: User = { 
-      ...insertUser, 
+      ...insertUser,
+      role: insertUser.role || "user",
+      avatar: insertUser.avatar || null,
       id,
       createdAt: new Date(),
     };
@@ -306,8 +308,17 @@ export class MemStorage implements IStorage {
   async createProduct(insertProduct: InsertProduct): Promise<Product> {
     const id = this.currentProductId++;
     const product: Product = { 
-      ...insertProduct, 
       id,
+      name: insertProduct.name,
+      description: insertProduct.description,
+      price: insertProduct.price,
+      category: insertProduct.category,
+      brand: insertProduct.brand,
+      images: insertProduct.images || [],
+      tags: insertProduct.tags || [],
+      stock: insertProduct.stock ?? 0,
+      featured: insertProduct.featured ?? false,
+      active: insertProduct.active ?? true,
       createdAt: new Date(),
     };
     this.products.set(id, product);
@@ -335,7 +346,8 @@ export class MemStorage implements IStorage {
   async createOrder(insertOrder: InsertOrder): Promise<Order> {
     const id = this.currentOrderId++;
     const order: Order = { 
-      ...insertOrder, 
+      ...insertOrder,
+      status: insertOrder.status || "pending",
       id,
       createdAt: new Date(),
     };
@@ -364,7 +376,8 @@ export class MemStorage implements IStorage {
   async addToCart(insertCartItem: InsertCartItem): Promise<CartItem> {
     const id = this.currentCartItemId++;
     const cartItem: CartItem = { 
-      ...insertCartItem, 
+      ...insertCartItem,
+      quantity: insertCartItem.quantity || 1,
       id,
       createdAt: new Date(),
     };
