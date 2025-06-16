@@ -1,0 +1,187 @@
+**Comprehensive Project Prompt for EliteReplicas.in**
+
+---
+
+### 🔥 OVERVIEW
+
+**Project:** EliteReplicas.in
+**Goal:** Build a fully immersive, luxury-class, e-commerce platform for premium replica fashion products. This project should feature interactive 3D product visualization, elegant UI/UX, real-time backend management using Firebase, user authentication with role-based access (Admin & Super Admin), seamless responsiveness, and high-performance animations.
+
+---
+
+### 🔍 BRAND IDENTITY & UI/UX SYSTEM
+
+**Visual Language:**
+
+* **Color Palette:** Deep Charcoal, Cream White, Matte Gold, Rich Black.
+* **Typography:** Headings with `Playfair Display`, Body text with `Inter` or `Poppins`.
+* **Design Style:** Mix of Glassmorphism (frosted panels, blur) and Neobrutalism (bold layout, defined shadows).
+* **Animations:** Use Framer Motion for smooth UI transitions and hover effects. Add scroll-based animation using GSAP.
+* **Layout System:** Responsive 12-column grid. Tailwind CSS preferred for styling.
+
+---
+
+### 🏠 FRONTEND MODULES
+
+**1. Homepage**
+
+* Full-screen 3D hero section: Rotating product rendered using React Three Fiber.
+* Parallax scroll and animated sections: "Top Sellers," "Why EliteReplicas," brand story.
+* Newsletter subscription block with entry animation.
+
+**2. Product Detail Page**
+
+* Interactive image carousel and 360° viewer.
+* Sticky price & add-to-cart bar.
+* Product features list, reviews, related products section.
+
+**3. Search and Filter Page**
+
+* Live search results with instant feedback.
+* Multiple filters: price slider, size, category, color chips.
+* Real-time update of products grid.
+
+**4. Shopping Cart & Checkout**
+
+* Slide-in animated cart.
+* Editable quantities, remove items, subtotal calculation.
+* Checkout: Step-wise flow (Shipping → Payment → Confirm).
+
+**5. User Profile & Dashboard**
+
+* Profile management: Edit name, email, avatar.
+* Tabs for order history, wishlist, saved items.
+* Charts for order statistics and shipping status.
+
+---
+
+### 🤝 ROLE-BASED ACCESS SYSTEM
+
+**1. Firebase Authentication**
+
+* Email/Password login.
+* Google OAuth login.
+* Password reset and email verification flow.
+
+**2. User Roles**
+
+* **Standard User**: Can shop, add to wishlist, track orders.
+* **Admin**: Can manage products, users, orders.
+* **Super Admin**:
+
+  * All admin privileges.
+  * Add/Remove other admins.
+  * Toggle site-wide settings (e.g., maintenance mode).
+
+**3. Route Protection**
+
+* Use custom Firebase claims to manage access.
+* Admin and Super Admin dashboards are protected using middleware.
+
+---
+
+### 👨‍💻 ADMIN DASHBOARD FEATURES
+
+**Dashboard Layout**
+
+* Side nav + main content area.
+* Fully responsive: Collapsible nav on mobile.
+
+**Modules:**
+
+* **Product Manager:** Add/edit/delete products. Upload images/3D models.
+* **Orders Manager:** Track all orders, update shipping statuses.
+* **Users Manager:** View and moderate user activities.
+* **Analytics Panel:** Sales stats, traffic, engagement graphs.
+
+**Super Admin Exclusive:**
+
+* Promote/Demote admins.
+* System configurations (e.g., toggle user registration).
+* View raw Firestore data.
+
+---
+
+### 🚀 BACKEND: FIREBASE MODULES
+
+**1. Firebase Firestore**
+
+* Collections:
+
+  * `products` ➔ product details, pricing, inventory.
+  * `users` ➔ profile data, role, metadata.
+  * `orders` ➔ userID, items, payment, shipping.
+  * `notifications` ➔ push updates.
+
+**2. Firebase Functions**
+
+* Cloud-triggered functions:
+
+  * On new order: send confirmation email.
+  * On stock update: notify admins.
+  * Scheduled functions for daily report aggregation.
+
+**3. Firebase Storage**
+
+* Store product images and 3D model files.
+* Avatar uploads and banners.
+
+**4. Firebase Hosting**
+
+* Host the frontend securely.
+* Use custom domain with SSL (elitereplicas.in).
+
+---
+
+### 💡 3D INTEGRATION
+
+**React Three Fiber / Three.js**
+
+* Display rotating products on homepage.
+* On product pages, embed 3D model viewer.
+* Animate lighting and materials (metallic, matte finishes).
+
+**User Controls**
+
+* Orbit controls to spin/zoom models.
+* Touch and mobile-friendly interactions.
+
+**Optimization**
+
+* Draco compression.
+* Lazy load 3D assets.
+
+---
+
+### 📊 PERFORMANCE & SECURITY
+
+* **Image Optimization**: Use Next.js Image or Cloudinary.
+* **Lazy Loading**: Sections, products, and images.
+* **Security**:
+
+  * Firebase Rules for Firestore and Storage.
+  * Client-side sanitization & server-side validation.
+  * HTTPS enforced across the site.
+
+---
+
+### 🛍️ MOBILE EXPERIENCE
+
+* Fully responsive across breakpoints.
+* Optimized for touch: swipeable carousels, sticky CTAs.
+* Use `Tailwind` responsive classes or `media queries`.
+
+---
+
+### 📊 SEO, ANALYTICS & EXTRAS
+
+* Meta tags, Open Graph tags for social sharing.
+* Firebase or Plausible for user analytics.
+* Push notifications using Firebase Cloud Messaging.
+* Structured data (schema.org) for products.
+
+---
+
+### ✅ FINAL GOAL
+
+> Deliver a robust, beautiful, scalable, and immersive e-commerce site with cutting-edge UI, 3D interactions, secure Firebase backend, and complete role-based administration for EliteReplicas.in.
