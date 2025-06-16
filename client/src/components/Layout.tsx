@@ -1,8 +1,6 @@
 import { ReactNode } from "react";
 import Navigation from "./Navigation";
 import CartModal from "./CartModal";
-import AuthModal from "./AuthModal";
-import SearchModal from "./SearchModal";
 
 interface LayoutProps {
   children: ReactNode;
@@ -16,8 +14,6 @@ export default function Layout({ children }: LayoutProps) {
         {children}
       </main>
       <CartModal />
-      <AuthModal />
-      <SearchModal />
     </div>
   );
 }
