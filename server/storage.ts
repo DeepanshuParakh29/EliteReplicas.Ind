@@ -1,4 +1,6 @@
 import { users, products, orders, cartItems, type User, type Product, type Order, type CartItem, type InsertUser, type InsertProduct, type InsertOrder, type InsertCartItem } from "@shared/schema";
+import { db } from "./db";
+import { eq, like, and, desc, sql } from "drizzle-orm";
 
 // modify the interface with any CRUD methods
 // you might need
@@ -41,6 +43,186 @@ export interface IStorage {
     totalProducts: number;
     totalUsers: number;
   }>;
+}
+
+export class DatabaseStorage implements IStorage {
+  // User methods
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, username));
+    return user || undefined;
+  }
+
+  async getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid));
+    return user || undefined;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db.insert(users).values(insertUser).returning();
+    return user;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users);
+  }
+
+  // Product methods
+  async getProduct(id: number): Promise<Product | undefined> {
+    const [product] = await db.select().from(products).where(eq(products.id, id));
+    return product || undefined;
+  }
+
+  async getProducts(filters?: { search?: string; category?: string; sortBy?: string }): Promise<Product[]> {
+    const conditions = [eq(products.active, true)];
+    
+    if (filters?.search) {
+      conditions.push(like(products.name, `%${filters.search}%`));
+    }
+    
+    if (filters?.category) {
+      conditions.push(eq(products.category, filters.category));
+    }
+    
+    let query = db.select().from(products).where(and(...conditions));
+    
+    if (filters?.sortBy === 'price_asc') {
+      query = query.orderBy(products.price);
+    } else if (filters?.sortBy === 'price_desc') {
+      query = query.orderBy(desc(products.price));
+    } else {
+      query = query.orderBy(desc(products.createdAt));
+    }
+    
+    return await query;
+  }
+
+  async getFeaturedProducts(): Promise<Product[]> {
+    return await db.select().from(products)
+      .where(and(eq(products.featured, true), eq(products.active, true)))
+      .orderBy(desc(products.createdAt));
+  }
+
+  async searchProducts(query: string): Promise<Product[]> {
+    return await db.select().from(products)
+      .where(
+        and(
+          eq(products.active, true),
+          like(products.name, `%${query}%`)
+        )
+      );
+  }
+
+  async createProduct(insertProduct: InsertProduct): Promise<Product> {
+    const [product] = await db.insert(products).values(insertProduct).returning();
+    return product;
+  }
+
+  async updateProduct(id: number, updateData: Partial<InsertProduct>): Promise<Product | undefined> {
+    const [product] = await db.update(products)
+      .set(updateData)
+      .where(eq(products.id, id))
+      .returning();
+    return product || undefined;
+  }
+
+  async deleteProduct(id: number): Promise<boolean> {
+    const result = await db.update(products)
+      .set({ active: false })
+      .where(eq(products.id, id));
+    return (result.rowCount || 0) > 0;
+  }
+
+  async getAllProducts(): Promise<Product[]> {
+    return await db.select().from(products);
+  }
+
+  // Order methods
+  async createOrder(insertOrder: InsertOrder): Promise<Order> {
+    const [order] = await db.insert(orders).values(insertOrder).returning();
+    return order;
+  }
+
+  async getOrdersByUser(userId: number): Promise<Order[]> {
+    return await db.select().from(orders)
+      .where(eq(orders.userId, userId))
+      .orderBy(desc(orders.createdAt));
+  }
+
+  async getAllOrders(): Promise<Order[]> {
+    return await db.select().from(orders).orderBy(desc(orders.createdAt));
+  }
+
+  async updateOrderStatus(id: number, status: string): Promise<Order | undefined> {
+    const [order] = await db.update(orders)
+      .set({ status })
+      .where(eq(orders.id, id))
+      .returning();
+    return order || undefined;
+  }
+
+  // Cart methods
+  async addToCart(insertCartItem: InsertCartItem): Promise<CartItem> {
+    const [cartItem] = await db.insert(cartItems).values(insertCartItem).returning();
+    return cartItem;
+  }
+
+  async getCartItems(userId: number): Promise<CartItem[]> {
+    return await db.select().from(cartItems).where(eq(cartItems.userId, userId));
+  }
+
+  async updateCartItem(id: number, quantity: number): Promise<CartItem | undefined> {
+    const [cartItem] = await db.update(cartItems)
+      .set({ quantity })
+      .where(eq(cartItems.id, id))
+      .returning();
+    return cartItem || undefined;
+  }
+
+  async removeFromCart(id: number): Promise<boolean> {
+    const result = await db.delete(cartItems).where(eq(cartItems.id, id));
+    return result.rowCount > 0;
+  }
+
+  async clearCart(userId: number): Promise<boolean> {
+    const result = await db.delete(cartItems).where(eq(cartItems.userId, userId));
+    return result.rowCount > 0;
+  }
+
+  // Admin methods
+  async getAdminStats(): Promise<{
+    totalSales: number;
+    totalOrders: number;
+    totalProducts: number;
+    totalUsers: number;
+  }> {
+    const [salesResult] = await db.select({
+      total: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`
+    }).from(orders);
+    
+    const [ordersResult] = await db.select({
+      count: sql<number>`COUNT(*)`
+    }).from(orders);
+    
+    const [productsResult] = await db.select({
+      count: sql<number>`COUNT(*)`
+    }).from(products).where(eq(products.active, true));
+    
+    const [usersResult] = await db.select({
+      count: sql<number>`COUNT(*)`
+    }).from(users);
+
+    return {
+      totalSales: salesResult.total || 0,
+      totalOrders: ordersResult.count || 0,
+      totalProducts: productsResult.count || 0,
+      totalUsers: usersResult.count || 0,
+    };
+  }
 }
 
 export class MemStorage implements IStorage {
@@ -433,4 +615,4 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
