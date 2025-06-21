@@ -3,7 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
+  id: text("id").primaryKey(),
   firebaseUid: text("firebase_uid").notNull().unique(),
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
@@ -13,7 +13,7 @@ export const users = pgTable("users", {
 });
 
 export const products = pgTable("products", {
-  id: serial("id").primaryKey(),
+  id: text("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description").notNull(),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
@@ -28,10 +28,10 @@ export const products = pgTable("products", {
 });
 
 export const orders = pgTable("orders", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
   items: json("items").$type<Array<{
-    productId: number;
+    productId: string;
     quantity: number;
     price: string;
     name: string;
@@ -50,32 +50,19 @@ export const orders = pgTable("orders", {
 });
 
 export const cartItems = pgTable("cart_items", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
-  productId: integer("product_id").notNull(),
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  productId: text("product_id").notNull(),
   quantity: integer("quantity").notNull().default(1),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertUserSchema = createInsertSchema(users).omit({
-  id: true,
-  createdAt: true,
+export const insertUserSchema = createInsertSchema(users);
+export const insertProductSchema = createInsertSchema(products, {
+  id: z.string().optional(),
 });
-
-export const insertProductSchema = createInsertSchema(products).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertOrderSchema = createInsertSchema(orders).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertCartItemSchema = createInsertSchema(cartItems).omit({
-  id: true,
-  createdAt: true,
-});
+export const insertOrderSchema = createInsertSchema(orders);
+export const insertCartItemSchema = createInsertSchema(cartItems);
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
@@ -86,3 +73,50 @@ export type User = typeof users.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type Order = typeof orders.$inferSelect;
 export type CartItem = typeof cartItems.$inferSelect;
+
+export interface IStorage {
+  // User methods
+  getUser(id: string): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  getAllUsers(): Promise<User[]>;
+
+  // Product methods
+  getProduct(id: string): Promise<Product | undefined>;
+  getProducts(filters?: {
+    search?: string;
+    category?: string;
+    sortBy?: string;
+  }): Promise<Product[]>;
+  getFeaturedProducts(): Promise<Product[]>;
+  searchProducts(query: string): Promise<Product[]>;
+  createProduct(product: InsertProduct): Promise<Product>;
+  updateProduct(
+    id: string,
+    product: Partial<InsertProduct>
+  ): Promise<Product | undefined>;
+  deleteProduct(id: string): Promise<boolean>;
+  getAllProducts(): Promise<Product[]>;
+
+  // Order methods
+  createOrder(order: InsertOrder): Promise<Order>;
+  getOrdersByUser(userId: string): Promise<Order[]>;
+  getAllOrders(): Promise<Order[]>;
+  updateOrderStatus(id: string, status: string): Promise<Order | undefined>;
+
+  // Cart methods
+  addToCart(cartItem: InsertCartItem): Promise<CartItem>;
+  getCartItems(userId: string): Promise<CartItem[]>;
+  updateCartItem(id: string, quantity: number): Promise<CartItem | undefined>;
+  removeFromCart(id: string): Promise<boolean>;
+  clearCart(userId: string): Promise<boolean>;
+
+  // Admin methods
+  getAdminStats(): Promise<{
+    totalSales: number;
+    totalOrders: number;
+    totalProducts: number;
+    totalUsers: number;
+  }>;
+}

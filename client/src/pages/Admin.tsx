@@ -15,9 +15,12 @@ import {
   Crown,
   Settings
 } from "lucide-react";
+import { useState } from "react";
+import AddProductModal from "../components/AddProductModal";
 
 export default function Admin() {
   const { user } = useAuth();
+  const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
 
   // Check if user has admin privileges
   if (!user || (user.role !== "admin" && user.role !== "super_admin")) {
@@ -32,20 +35,24 @@ export default function Admin() {
     );
   }
 
-  const { data: stats } = useQuery({
+  const { data: stats } = useQuery<{ totalSales: number; totalOrders: number; totalProducts: number; totalUsers: number }>({
     queryKey: ["/api/admin/stats"],
+    queryFn: () => fetch("/api/admin/stats").then((res) => res.json()),
   });
 
   const { data: products } = useQuery<Product[]>({
     queryKey: ["/api/admin/products"],
+    queryFn: () => fetch("/api/admin/products").then((res) => res.json()),
   });
 
   const { data: orders } = useQuery<Order[]>({
     queryKey: ["/api/admin/orders"],
+    queryFn: () => fetch("/api/admin/orders").then((res) => res.json()),
   });
 
   const { data: users } = useQuery<User[]>({
     queryKey: ["/api/admin/users"],
+    queryFn: () => fetch("/api/admin/users").then((res) => res.json()),
   });
 
   return (
@@ -78,7 +85,7 @@ export default function Admin() {
                   <h3 className="text-gray-400">Total Sales</h3>
                   <DollarSign className="w-6 h-6 text-matte-gold" />
                 </div>
-                <p className="text-3xl font-bold text-matte-gold">$24,580</p>
+                <p className="text-3xl font-bold text-matte-gold">${stats?.totalSales?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "-"}</p>
                 <p className="text-green-400 text-sm">+12% from last month</p>
               </CardContent>
             </Card>
@@ -89,7 +96,7 @@ export default function Admin() {
                   <h3 className="text-gray-400">Orders</h3>
                   <ShoppingCart className="w-6 h-6 text-matte-gold" />
                 </div>
-                <p className="text-3xl font-bold text-matte-gold">{orders?.length || 0}</p>
+                <p className="text-3xl font-bold text-matte-gold">{stats?.totalOrders ?? orders?.length ?? 0}</p>
                 <p className="text-green-400 text-sm">+8% from last month</p>
               </CardContent>
             </Card>
@@ -100,7 +107,7 @@ export default function Admin() {
                   <h3 className="text-gray-400">Products</h3>
                   <Package className="w-6 h-6 text-matte-gold" />
                 </div>
-                <p className="text-3xl font-bold text-matte-gold">{products?.length || 0}</p>
+                <p className="text-3xl font-bold text-matte-gold">{stats?.totalProducts ?? products?.length ?? 0}</p>
                 <p className="text-blue-400 text-sm">5 new this week</p>
               </CardContent>
             </Card>
@@ -111,7 +118,7 @@ export default function Admin() {
                   <h3 className="text-gray-400">Users</h3>
                   <Users className="w-6 h-6 text-matte-gold" />
                 </div>
-                <p className="text-3xl font-bold text-matte-gold">{users?.length || 0}</p>
+                <p className="text-3xl font-bold text-matte-gold">{stats?.totalUsers ?? users?.length ?? 0}</p>
                 <p className="text-green-400 text-sm">+15% from last month</p>
               </CardContent>
             </Card>
@@ -171,15 +178,59 @@ export default function Admin() {
                     <div className="text-center py-8">
                       <p className="text-gray-400">No orders yet</p>
                     </div>
+                  )
+                }
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="users" className="space-y-6">
+              <h2 className="text-2xl font-bold">User Management</h2>
+              <Card className="bg-deep-charcoal border-matte-gold/20 glass-effect">
+                <CardContent className="p-6">
+                  {users && users.length > 0 ? (
+                    <div className="space-y-4">
+                      {users.map((userData) => (
+                        <div key={userData.id} className="flex items-center justify-between p-4 bg-rich-black rounded-lg">
+                          <div className="flex items-center space-x-4">
+                            <div className="w-10 h-10 bg-matte-gold rounded-full flex items-center justify-center">
+                              <span className="text-rich-black font-semibold">
+                                {userData.name.charAt(0).toUpperCase()}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="font-semibold">{userData.name}</p>
+                              <p className="text-gray-400 text-sm">{userData.email}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-4">
+                            <span className="capitalize text-matte-gold">{userData.role}</span>
+                            <span className="text-gray-400 text-sm">
+                              {userData.createdAt ? new Date(userData.createdAt).toLocaleDateString() : "N/A"}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-400">No users found</p>
+                    </div>
                   )}
                 </CardContent>
               </Card>
             </TabsContent>
 
+            <AddProductModal isOpen={isAddProductModalOpen} onClose={() => setIsAddProductModalOpen(false)} />
+
             <TabsContent value="products" className="space-y-6">
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold">Product Management</h2>
-                <Button className="bg-matte-gold text-rich-black hover:bg-yellow-500">
+                <Button
+                  className="bg-matte-gold text-rich-black hover:bg-yellow-500"
+                  onClick={() => setIsAddProductModalOpen(true)}
+                >
                   <Plus className="w-4 h-4 mr-2" />
                   Add Product
                 </Button>
@@ -229,47 +280,12 @@ export default function Admin() {
                     <ShoppingCart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                     <p className="text-gray-400">Order management features coming soon</p>
                   </div>
+
                 </CardContent>
               </Card>
             </TabsContent>
 
-            <TabsContent value="users" className="space-y-6">
-              <h2 className="text-2xl font-bold">User Management</h2>
-              <Card className="bg-deep-charcoal border-matte-gold/20 glass-effect">
-                <CardContent className="p-6">
-                  {users && users.length > 0 ? (
-                    <div className="space-y-4">
-                      {users.map((userData) => (
-                        <div key={userData.id} className="flex items-center justify-between p-4 bg-rich-black rounded-lg">
-                          <div className="flex items-center space-x-4">
-                            <div className="w-10 h-10 bg-matte-gold rounded-full flex items-center justify-center">
-                              <span className="text-rich-black font-semibold">
-                                {userData.name.charAt(0).toUpperCase()}
-                              </span>
-                            </div>
-                            <div>
-                              <p className="font-semibold">{userData.name}</p>
-                              <p className="text-gray-400 text-sm">{userData.email}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-4">
-                            <span className="capitalize text-matte-gold">{userData.role}</span>
-                            <span className="text-gray-400 text-sm">
-                              {userData.createdAt ? new Date(userData.createdAt).toLocaleDateString() : "N/A"}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-400">No users found</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
+
 
             {user.role === "super_admin" && (
               <TabsContent value="settings" className="space-y-6">
@@ -303,6 +319,9 @@ export default function Admin() {
             )}
           </Tabs>
         </motion.div>
+
+ 
+        <AddProductModal isOpen={isAddProductModalOpen} onClose={() => setIsAddProductModalOpen(false)} />
       </div>
     </div>
   );

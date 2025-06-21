@@ -40,6 +40,8 @@ export default function SearchModal({ onClose }: SearchModalProps) {
             <div className="relative mb-6">
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <Input
+                id="search-input"
+                name="searchQuery"
                 type="text"
                 placeholder="Search for luxury replicas..."
                 value={searchQuery}

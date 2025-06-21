@@ -7,9 +7,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { motion } from "framer-motion";
 import { User, Package, Heart, Settings } from "lucide-react";
+// Remove duplicate import since useAuth is already imported from @/context/AuthContext
+import { useState, useEffect } from "react";
+import { userService } from "@/services/user";
+import { useToast } from "../components/ui/use-toast";
 
 export default function Profile() {
   const { user } = useAuth();
+  const { toast } = useToast();
+
+  const [name, setName] = useState(user?.name || "");
+  const [email, setEmail] = useState(user?.email || "");
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setName(user.name || "");
+      setEmail(user.email || "");
+    }
+  }, [user]);
 
   if (!user) {
     return (
@@ -21,6 +37,27 @@ export default function Profile() {
       </div>
     );
   }
+
+  const handleProfileUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsUpdating(true);
+    try {
+      await userService.updateUser(user.firebaseUid, { name });
+      await userService.getUserByFirebaseUid(user.firebaseUid); // Re-fetch current user data to update context
+      toast({
+        title: "Profile Updated",
+        description: "Your profile has been successfully updated.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update profile.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-rich-black to-deep-charcoal">
@@ -79,7 +116,9 @@ export default function Profile() {
                       <Label htmlFor="name">Full Name</Label>
                       <Input
                         id="name"
-                        defaultValue={user.name}
+                        name="name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
                         className="bg-rich-black border-matte-gold/20"
                       />
                     </div>
@@ -87,14 +126,20 @@ export default function Profile() {
                       <Label htmlFor="email">Email</Label>
                       <Input
                         id="email"
-                        defaultValue={user.email}
+                        name="email"
+                        value={email}
                         disabled
                         className="bg-rich-black border-matte-gold/20"
+                        autoComplete="email"
                       />
                     </div>
                   </div>
-                  <Button className="bg-matte-gold text-rich-black hover:bg-yellow-500">
-                    Update Profile
+                  <Button
+                    className="bg-matte-gold text-rich-black hover:bg-yellow-500"
+                    onClick={handleProfileUpdate}
+                    disabled={isUpdating}
+                  >
+                    {isUpdating ? "Updating..." : "Update Profile"}
                   </Button>
                 </CardContent>
               </Card>

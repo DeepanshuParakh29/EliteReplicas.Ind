@@ -1,40 +1,50 @@
-import { users, products, orders, cartItems, type User, type Product, type Order, type CartItem, type InsertUser, type InsertProduct, type InsertOrder, type InsertCartItem } from "@shared/schema";
-import { db } from "./db";
-import { eq, like, and, desc, sql } from "drizzle-orm";
-
-// modify the interface with any CRUD methods
-// you might need
+import { 
+  type User, 
+  type Product, 
+  type Order, 
+  type CartItem, 
+  type InsertUser, 
+  type InsertProduct, 
+  type InsertOrder, 
+  type InsertCartItem 
+} from "@shared/schema";
+import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 export interface IStorage {
   // User methods
-  getUser(id: number): Promise<User | undefined>;
+  getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  createUser(insertUser: InsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
 
   // Product methods
-  getProduct(id: number): Promise<Product | undefined>;
-  getProducts(filters?: { search?: string; category?: string; sortBy?: string }): Promise<Product[]>;
+  getProduct(id: string): Promise<Product | undefined>;
+  getProducts(filters?: {
+    search?: string;
+    category?: string;
+    sortBy?: string;
+  }): Promise<Product[]>;
   getFeaturedProducts(): Promise<Product[]>;
   searchProducts(query: string): Promise<Product[]>;
-  createProduct(product: InsertProduct): Promise<Product>;
-  updateProduct(id: number, product: Partial<InsertProduct>): Promise<Product | undefined>;
-  deleteProduct(id: number): Promise<boolean>;
+  createProduct(insertProduct: InsertProduct): Promise<Product>;
+  updateProduct(id: string, product: Partial<InsertProduct>): Promise<Product | undefined>;
+  deleteProduct(id: string): Promise<boolean>;
   getAllProducts(): Promise<Product[]>;
 
   // Order methods
-  createOrder(order: InsertOrder): Promise<Order>;
-  getOrdersByUser(userId: number): Promise<Order[]>;
+  createOrder(insertOrder: InsertOrder): Promise<Order>;
+  getOrdersByUser(userId: string): Promise<Order[]>;
   getAllOrders(): Promise<Order[]>;
-  updateOrderStatus(id: number, status: string): Promise<Order | undefined>;
+  updateOrderStatus(id: string, status: string): Promise<Order | undefined>;
 
   // Cart methods
-  addToCart(cartItem: InsertCartItem): Promise<CartItem>;
-  getCartItems(userId: number): Promise<CartItem[]>;
-  updateCartItem(id: number, quantity: number): Promise<CartItem | undefined>;
-  removeFromCart(id: number): Promise<boolean>;
-  clearCart(userId: number): Promise<boolean>;
+  addToCart(insertCartItem: InsertCartItem): Promise<CartItem>;
+  getCartItems(userId: string): Promise<CartItem[]>;
+  updateCartItem(id: string, quantity: number): Promise<CartItem | undefined>;
+  removeFromCart(id: string): Promise<boolean>;
+  clearCart(userId: string): Promise<boolean>;
 
   // Admin methods
   getAdminStats(): Promise<{
@@ -45,152 +55,424 @@ export interface IStorage {
   }>;
 }
 
-export class DatabaseStorage implements IStorage {
+export interface IFileStorage {
+  getSignedUrlForUpload(destination: string, contentType: string): Promise<string>;
+  deleteFile(filePath: string): Promise<void>;
+  uploadBuffer(destination: string, buffer: Buffer, contentType: string): Promise<string>;
+}
+
+
+import { Bucket } from '@google-cloud/storage';
+
+export class FirebaseFileStorage implements IFileStorage {
+  private bucket: Bucket;
+
+  constructor(storage: admin.storage.Storage, bucketName: string) {
+    this.bucket = storage.bucket(bucketName);
+  }
+
+  async getSignedUrlForUpload(destination: string, contentType: string): Promise<string> {
+    const file = this.bucket.file(destination);
+    const [url] = await file.getSignedUrl({
+      version: 'v4',
+      action: 'write',
+      expires: Date.now() + 15 * 60 * 1000, // 15 minutes
+      contentType: contentType,
+    });
+    return url;
+  }
+
+  async deleteFile(filePath: string): Promise<void> {
+    const file = this.bucket.file(filePath);
+    await file.delete();
+  }
+
+  async uploadBuffer(destination: string, buffer: Buffer, contentType: string): Promise<string> {
+    const file = this.bucket.file(destination);
+    await file.save(buffer, { contentType });
+    // Make the file publicly readable (optional: adjust based on bucket policy)
+    await file.makePublic().catch(() => {/* ignore if already public or policy forbids */});
+    return `https://storage.googleapis.com/${this.bucket.name}/${destination}`;
+  }
+}
+
+export class FirestoreStorage implements IStorage {
+  private db: admin.firestore.Firestore;
+
+  constructor(firestore: admin.firestore.Firestore, storage: admin.storage.Storage, bucketName: string) {
+    this.db = firestore;
+  }
+
   // User methods
-  async getUser(id: number): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user || undefined;
+  async getUser(id: string): Promise<User | undefined> {
+    try {
+      const doc = await this.db.collection("users").doc(id).get();
+      return doc.exists ? ({ id: doc.id, ...doc.data() } as User) : undefined;
+    } catch (error) {
+      console.error('Error getting user:', error);
+      return undefined;
+    }
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, username));
-    return user || undefined;
+    try {
+      const snapshot = await this.db
+        .collection("users")
+        .where("email", "==", username)
+        .limit(1)
+        .get();
+      if (snapshot.empty) {
+        return undefined;
+      }
+      const doc = snapshot.docs[0];
+      return { id: doc.id, ...doc.data() } as User;
+    } catch (error) {
+      console.error('Error getting user by username:', error);
+      return undefined;
+    }
   }
 
   async getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid));
-    return user || undefined;
+    try {
+      const snapshot = await this.db
+        .collection("users")
+        .where("firebaseUid", "==", firebaseUid)
+        .limit(1)
+        .get();
+      if (snapshot.empty) {
+        return undefined;
+      }
+      const doc = snapshot.docs[0];
+      return { id: doc.id, ...doc.data() } as User;
+    } catch (error) {
+      console.error('Error getting user by Firebase UID:', error);
+      return undefined;
+    }
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(insertUser).returning();
-    return user;
+    try {
+      const userData = {
+        ...insertUser,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      const docRef = await this.db.collection("users").add(userData);
+      const doc = await docRef.get();
+      return { id: doc.id, ...doc.data() } as User;
+    } catch (error) {
+      console.error('Error creating user:', error);
+      throw error;
+    }
   }
 
   async getAllUsers(): Promise<User[]> {
-    return await db.select().from(users);
+    try {
+      const snapshot = await this.db.collection("users").get();
+      return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as User));
+    } catch (error) {
+      console.error('Error getting all users:', error);
+      return [];
+    }
   }
 
   // Product methods
-  async getProduct(id: number): Promise<Product | undefined> {
-    const [product] = await db.select().from(products).where(eq(products.id, id));
-    return product || undefined;
+  async getProduct(id: string): Promise<Product | undefined> {
+    try {
+      const doc = await this.db.collection("products").doc(id).get();
+      return doc.exists ? ({ id: doc.id, ...doc.data() } as Product) : undefined;
+    } catch (error) {
+      console.error('Error getting product:', error);
+      return undefined;
+    }
   }
 
-  async getProducts(filters?: { search?: string; category?: string; sortBy?: string }): Promise<Product[]> {
-    const conditions = [eq(products.active, true)];
-    
-    if (filters?.search) {
-      conditions.push(like(products.name, `%${filters.search}%`));
+  async getProducts(filters?: {
+    search?: string;
+    category?: string;
+    sortBy?: string;
+  }): Promise<Product[]> {
+    try {
+      let query: admin.firestore.Query = this.db.collection("products").where("active", "==", true);
+
+      if (filters?.category && filters.category !== 'all') {
+        query = query.where("category", "==", filters.category);
+      }
+
+      if (filters?.sortBy) {
+        const [field, direction] = filters.sortBy.split("_");
+        if (field && (direction === "asc" || direction === "desc")) {
+          query = query.orderBy(field, direction);
+        }
+      } else {
+        query = query.orderBy("createdAt", "desc");
+      }
+
+      const snapshot = await query.get();
+      let products = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Product));
+
+      // Handle search filtering client-side since Firestore has limited text search
+      if (filters?.search) {
+        const searchLower = filters.search.toLowerCase();
+        products = products.filter(p => 
+          p.name?.toLowerCase().includes(searchLower) ||
+          p.description?.toLowerCase().includes(searchLower) ||
+          p.brand?.toLowerCase().includes(searchLower) ||
+          (p.tags && p.tags.some(tag => tag.toLowerCase().includes(searchLower)))
+        );
+      }
+
+      return products;
+    } catch (error) {
+      console.error('Error getting products:', error);
+      return [];
     }
-    
-    if (filters?.category) {
-      conditions.push(eq(products.category, filters.category));
-    }
-    
-    let query = db.select().from(products).where(and(...conditions));
-    
-    if (filters?.sortBy === 'price_asc') {
-      query = query.orderBy(products.price);
-    } else if (filters?.sortBy === 'price_desc') {
-      query = query.orderBy(desc(products.price));
-    } else {
-      query = query.orderBy(desc(products.createdAt));
-    }
-    
-    return await query;
   }
 
   async getFeaturedProducts(): Promise<Product[]> {
-    return await db.select().from(products)
-      .where(and(eq(products.featured, true), eq(products.active, true)))
-      .orderBy(desc(products.createdAt));
+    try {
+      const snapshot = await this.db
+        .collection("products")
+        .where("featured", "==", true)
+        .where("active", "==", true)
+        .orderBy("createdAt", "desc")
+        .get();
+      return snapshot.docs.map((doc: admin.firestore.QueryDocumentSnapshot) => ({ id: doc.id, ...doc.data() } as Product));
+    } catch (error) {
+      console.error('Error getting featured products:', error);
+      return [];
+    }
   }
 
   async searchProducts(query: string): Promise<Product[]> {
-    return await db.select().from(products)
-      .where(
-        and(
-          eq(products.active, true),
-          like(products.name, `%${query}%`)
-        )
-      );
+    try {
+      // For better search, you might want to implement Algolia or use Firestore's limited text search
+      const snapshot = await this.db
+        .collection("products")
+        .where("active", "==", true)
+        .orderBy("name")
+        .startAt(query)
+        .endAt(query + '\uf8ff')
+        .limit(10)
+        .get();
+      return snapshot.docs.map((doc: admin.firestore.QueryDocumentSnapshot) => ({ id: doc.id, ...doc.data() } as Product));
+    } catch (error) {
+      console.error('Error searching products:', error);
+      return [];
+    }
   }
 
   async createProduct(insertProduct: InsertProduct): Promise<Product> {
-    const [product] = await db.insert(products).values(insertProduct).returning();
-    return product;
+    try {
+      console.log('Received product for creation in FirestoreStorage:', insertProduct);
+      const productData = {
+        ...insertProduct,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      const docRef = await this.db.collection("products").add(productData);
+      const doc = await docRef.get();
+      return { id: doc.id, ...doc.data() } as Product;
+    } catch (error) {
+      console.error('Error creating product in FirestoreStorage:', error);
+      throw error;
+    }
   }
 
-  async updateProduct(id: number, updateData: Partial<InsertProduct>): Promise<Product | undefined> {
-    const [product] = await db.update(products)
-      .set(updateData)
-      .where(eq(products.id, id))
-      .returning();
-    return product || undefined;
+  async updateProduct(id: string, product: Partial<InsertProduct>): Promise<Product | undefined> {
+    try {
+      const docRef = this.db.collection("products").doc(id);
+      const updateData = {
+        ...product,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+      await docRef.update(updateData);
+      const doc = await docRef.get();
+      return doc.exists ? ({ id: doc.id, ...doc.data() } as Product) : undefined;
+    } catch (error) {
+      console.error('Error updating product:', error);
+      return undefined;
+    }
   }
 
-  async deleteProduct(id: number): Promise<boolean> {
-    const result = await db.update(products)
-      .set({ active: false })
-      .where(eq(products.id, id));
-    return (result.rowCount || 0) > 0;
+  async deleteProduct(id: string): Promise<boolean> {
+    try {
+      await this.db.collection("products").doc(id).delete();
+      return true;
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      return false;
+    }
   }
 
   async getAllProducts(): Promise<Product[]> {
-    return await db.select().from(products);
+    try {
+      const snapshot = await this.db.collection("products").get();
+      return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Product));
+    } catch (error) {
+      console.error('Error getting all products:', error);
+      return [];
+    }
   }
 
   // Order methods
   async createOrder(insertOrder: InsertOrder): Promise<Order> {
-    const [order] = await db.insert(orders).values(insertOrder).returning();
-    return order;
+    try {
+      const orderData = {
+        ...insertOrder,
+        status: insertOrder.status || "pending",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+      const docRef = await this.db.collection("orders").add(orderData);
+      const doc = await docRef.get();
+      return { id: doc.id, ...doc.data() } as Order;
+    } catch (error) {
+      console.error('Error creating order:', error);
+      throw error;
+    }
   }
 
-  async getOrdersByUser(userId: number): Promise<Order[]> {
-    return await db.select().from(orders)
-      .where(eq(orders.userId, userId))
-      .orderBy(desc(orders.createdAt));
+  async getOrdersByUser(userId: string): Promise<Order[]> {
+    try {
+      const snapshot = await this.db
+        .collection("orders")
+        .where("userId", "==", userId)
+        .orderBy("createdAt", "desc")
+        .get();
+      return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Order));
+    } catch (error) {
+      console.error('Error getting orders by user:', error);
+      return [];
+    }
   }
 
   async getAllOrders(): Promise<Order[]> {
-    return await db.select().from(orders).orderBy(desc(orders.createdAt));
+    try {
+      const snapshot = await this.db
+        .collection("orders")
+        .orderBy("createdAt", "desc")
+        .get();
+      return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Order));
+    } catch (error) {
+      console.error('Error getting all orders:', error);
+      return [];
+    }
   }
 
-  async updateOrderStatus(id: number, status: string): Promise<Order | undefined> {
-    const [order] = await db.update(orders)
-      .set({ status })
-      .where(eq(orders.id, id))
-      .returning();
-    return order || undefined;
+  async updateOrderStatus(id: string, status: string): Promise<Order | undefined> {
+    try {
+      const docRef = this.db.collection("orders").doc(id);
+      await docRef.update({ 
+        status,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      const doc = await docRef.get();
+      return doc.exists ? ({ id: doc.id, ...doc.data() } as Order) : undefined;
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      return undefined;
+    }
   }
 
   // Cart methods
   async addToCart(insertCartItem: InsertCartItem): Promise<CartItem> {
-    const [cartItem] = await db.insert(cartItems).values(insertCartItem).returning();
-    return cartItem;
+    try {
+      // Check if item already exists in cart
+      const existingSnapshot = await this.db
+        .collection("cartItems")
+        .where("userId", "==", insertCartItem.userId)
+        .where("productId", "==", insertCartItem.productId)
+        .limit(1)
+        .get();
+
+      if (!existingSnapshot.empty) {
+        // Update existing item quantity
+        const existingDoc = existingSnapshot.docs[0];
+        const existingData = existingDoc.data() as CartItem;
+        const newQuantity = (existingData.quantity || 0) + (insertCartItem.quantity || 1);
+        
+        await existingDoc.ref.update({ 
+          quantity: newQuantity,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        
+        const updatedDoc = await existingDoc.ref.get();
+        return { id: updatedDoc.id, ...updatedDoc.data() } as CartItem;
+      } else {
+        // Create new cart item
+        const cartItemData = {
+          ...insertCartItem,
+          quantity: insertCartItem.quantity || 1,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        const docRef = await this.db.collection("cartItems").add(cartItemData);
+        const doc = await docRef.get();
+        return { id: doc.id, ...doc.data() } as CartItem;
+      }
+    } catch (error) {
+      console.error('Error adding to cart:', error);
+      throw error;
+    }
   }
 
-  async getCartItems(userId: number): Promise<CartItem[]> {
-    return await db.select().from(cartItems).where(eq(cartItems.userId, userId));
+  async getCartItems(userId: string): Promise<CartItem[]> {
+    try {
+      const snapshot = await this.db
+        .collection("cartItems")
+        .where("userId", "==", userId)
+        .orderBy("createdAt", "desc")
+        .get();
+      return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as CartItem));
+    } catch (error) {
+      console.error('Error getting cart items:', error);
+      return [];
+    }
   }
 
-  async updateCartItem(id: number, quantity: number): Promise<CartItem | undefined> {
-    const [cartItem] = await db.update(cartItems)
-      .set({ quantity })
-      .where(eq(cartItems.id, id))
-      .returning();
-    return cartItem || undefined;
+  async updateCartItem(id: string, quantity: number): Promise<CartItem | undefined> {
+    try {
+      const docRef = this.db.collection("cartItems").doc(id);
+      await docRef.update({ 
+        quantity,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      const doc = await docRef.get();
+      return doc.exists ? ({ id: doc.id, ...doc.data() } as CartItem) : undefined;
+    } catch (error) {
+      console.error('Error updating cart item:', error);
+      return undefined;
+    }
   }
 
-  async removeFromCart(id: number): Promise<boolean> {
-    const result = await db.delete(cartItems).where(eq(cartItems.id, id));
-    return result.rowCount > 0;
+  async removeFromCart(id: string): Promise<boolean> {
+    try {
+      await this.db.collection("cartItems").doc(id).delete();
+      return true;
+    } catch (error) {
+      console.error('Error removing from cart:', error);
+      return false;
+    }
   }
 
-  async clearCart(userId: number): Promise<boolean> {
-    const result = await db.delete(cartItems).where(eq(cartItems.userId, userId));
-    return result.rowCount > 0;
+  async clearCart(userId: string): Promise<boolean> {
+    try {
+      const snapshot = await this.db
+        .collection("cartItems")
+        .where("userId", "==", userId)
+        .get();
+      
+      const batch = this.db.batch();
+      snapshot.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
+      return true;
+    } catch (error) {
+      console.error('Error clearing cart:', error);
+      return false;
+    }
   }
 
   // Admin methods
@@ -200,419 +482,157 @@ export class DatabaseStorage implements IStorage {
     totalProducts: number;
     totalUsers: number;
   }> {
-    const [salesResult] = await db.select({
-      total: sql<number>`COALESCE(SUM(CAST(${orders.total} AS DECIMAL)), 0)`
-    }).from(orders);
-    
-    const [ordersResult] = await db.select({
-      count: sql<number>`COUNT(*)`
-    }).from(orders);
-    
-    const [productsResult] = await db.select({
-      count: sql<number>`COUNT(*)`
-    }).from(products).where(eq(products.active, true));
-    
-    const [usersResult] = await db.select({
-      count: sql<number>`COUNT(*)`
-    }).from(users);
+    try {
+      const [ordersSnapshot, productsSnapshot, usersSnapshot] = await Promise.all([
+        this.db.collection("orders").get(),
+        this.db.collection("products").where("active", "==", true).get(),
+        this.db.collection("users").get(),
+      ]);
 
-    return {
-      totalSales: salesResult.total || 0,
-      totalOrders: ordersResult.count || 0,
-      totalProducts: productsResult.count || 0,
-      totalUsers: usersResult.count || 0,
-    };
+      const totalSales = ordersSnapshot.docs.reduce((sum: number, doc: admin.firestore.QueryDocumentSnapshot) => {
+        const data = doc.data();
+        return sum + (parseFloat(data.total) || 0);
+      }, 0);
+
+      return {
+        totalSales,
+        totalOrders: ordersSnapshot.size,
+        totalProducts: productsSnapshot.size,
+        totalUsers: usersSnapshot.size,
+      };
+    } catch (error) {
+      console.error('Error getting admin stats:', error);
+      return {
+        totalSales: 0,
+        totalOrders: 0,
+        totalProducts: 0,
+        totalUsers: 0,
+      };
+    }
   }
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private products: Map<number, Product>;
-  private orders: Map<number, Order>;
-  private cartItems: Map<number, CartItem>;
-  private currentUserId: number;
-  private currentProductId: number;
-  private currentOrderId: number;
-  private currentCartItemId: number;
+// Combined Storage class that delegates to appropriate implementations
+class Storage {
+  private firestoreStorage: FirestoreStorage;
+  private fileStorage: FirebaseFileStorage;
 
-  constructor() {
-    this.users = new Map();
-    this.products = new Map();
-    this.orders = new Map();
-    this.cartItems = new Map();
-    this.currentUserId = 1;
-    this.currentProductId = 1;
-    this.currentOrderId = 1;
-    this.currentCartItemId = 1;
-
-    // Initialize with some sample data
-    this.initializeData();
+  constructor(firestore: admin.firestore.Firestore, storage: admin.storage.Storage, bucketName: string) {
+    this.firestoreStorage = new FirestoreStorage(firestore, storage, bucketName);
+    this.fileStorage = new FirebaseFileStorage(storage, bucketName);
   }
 
-  private initializeData() {
-    // Sample luxury products
-    const sampleProducts: Product[] = [
-      {
-        id: this.currentProductId++,
-        name: "Luxury Timepiece Collection",
-        description: "Exquisite replica of a premium Swiss timepiece featuring precision movement, sapphire crystal glass, and premium materials. Crafted with meticulous attention to detail.",
-        price: "299.00",
-        category: "watches",
-        brand: "Premium Swiss Replica",
-        images: [
-          "https://images.unsplash.com/photo-1523275335684-37898b6baf30?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800",
-          "https://images.unsplash.com/photo-1524592094714-0f0654e20314?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800"
-        ],
-        tags: ["luxury", "timepiece", "swiss", "premium"],
-        stock: 15,
-        featured: true,
-        active: true,
-        createdAt: new Date(),
-      },
-      {
-        id: this.currentProductId++,
-        name: "Designer Leather Footwear",
-        description: "Handcrafted replica of Italian designer shoes made from premium leather with exceptional comfort and style. Perfect for formal and casual occasions.",
-        price: "199.00",
-        category: "shoes",
-        brand: "Italian Craft Replica",
-        images: [
-          "https://images.unsplash.com/photo-1549298916-b41d501d3772?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800",
-          "https://images.unsplash.com/photo-1551107696-a4b0c5a0d9a2?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800"
-        ],
-        tags: ["designer", "leather", "shoes", "italian"],
-        stock: 25,
-        featured: true,
-        active: true,
-        createdAt: new Date(),
-      },
-      {
-        id: this.currentProductId++,
-        name: "Premium Designer Eyewear",
-        description: "High-quality replica of luxury sunglasses featuring UV protection, premium frames, and sophisticated design elements.",
-        price: "149.00",
-        category: "accessories",
-        brand: "Luxury Frame Replica",
-        images: [
-          "https://images.unsplash.com/photo-1572635196237-14b3f281503f?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800",
-          "https://images.unsplash.com/photo-1511499767150-a48a237f0083?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800"
-        ],
-        tags: ["sunglasses", "designer", "luxury", "eyewear"],
-        stock: 30,
-        featured: true,
-        active: true,
-        createdAt: new Date(),
-      },
-      {
-        id: this.currentProductId++,
-        name: "Artisan Leather Accessories",
-        description: "Premium replica leather belt crafted with exceptional attention to detail, featuring durable materials and elegant design.",
-        price: "89.00",
-        category: "accessories",
-        brand: "Artisan Craft Replica",
-        images: [
-          "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800",
-          "https://images.unsplash.com/photo-1506629905607-45c0e81e4e5d?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800"
-        ],
-        tags: ["leather", "belt", "accessories", "artisan"],
-        stock: 40,
-        featured: true,
-        active: true,
-        createdAt: new Date(),
-      },
-      {
-        id: this.currentProductId++,
-        name: "Luxury Designer Handbag",
-        description: "Sophisticated replica of a premium designer handbag featuring high-quality materials, elegant stitching, and timeless design.",
-        price: "450.00",
-        category: "bags",
-        brand: "Elite Fashion Replica",
-        images: [
-          "https://images.unsplash.com/photo-1584917865442-de89df76afd3?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800",
-          "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800"
-        ],
-        tags: ["handbag", "designer", "luxury", "fashion"],
-        stock: 12,
-        featured: false,
-        active: true,
-        createdAt: new Date(),
-      },
-      {
-        id: this.currentProductId++,
-        name: "Elite Sports Chronograph",
-        description: "Professional replica sports watch with chronograph functionality, water resistance, and premium build quality.",
-        price: "350.00",
-        category: "watches",
-        brand: "Sports Elite Replica",
-        images: [
-          "https://images.unsplash.com/photo-1434056886845-dac89ffe9b56?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800",
-          "https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800"
-        ],
-        tags: ["sports", "chronograph", "watch", "premium"],
-        stock: 18,
-        featured: false,
-        active: true,
-        createdAt: new Date(),
-      },
-      {
-        id: this.currentProductId++,
-        name: "Designer Business Portfolio",
-        description: "Professional replica briefcase made from premium leather with sophisticated design for the modern executive.",
-        price: "275.00",
-        category: "bags",
-        brand: "Executive Replica",
-        images: [
-          "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800",
-          "https://images.unsplash.com/photo-1560472354-b33ff0c44a43?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800"
-        ],
-        tags: ["briefcase", "business", "leather", "professional"],
-        stock: 8,
-        featured: false,
-        active: true,
-        createdAt: new Date(),
-      },
-      {
-        id: this.currentProductId++,
-        name: "Premium Casual Sneakers",
-        description: "High-quality replica of luxury casual sneakers with premium materials and exceptional comfort.",
-        price: "225.00",
-        category: "shoes",
-        brand: "Luxury Sport Replica",
-        images: [
-          "https://images.unsplash.com/photo-1542291026-7eec264c27ff?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800",
-          "https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800"
-        ],
-        tags: ["sneakers", "casual", "premium", "sport"],
-        stock: 35,
-        featured: false,
-        active: true,
-        createdAt: new Date(),
-      }
-    ];
-
-    // Add products to storage
-    sampleProducts.forEach(product => {
-      this.products.set(product.id, product);
-    });
+  // Delegate database operations to FirestoreStorage
+  getUser(id: string) {
+    return this.firestoreStorage.getUser(id);
   }
 
-  // User methods
-  async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+  getUserByUsername(username: string) {
+    return this.firestoreStorage.getUserByUsername(username);
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.email === username,
-    );
+  getUserByFirebaseUid(firebaseUid: string) {
+    return this.firestoreStorage.getUserByFirebaseUid(firebaseUid);
   }
 
-  async getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.firebaseUid === firebaseUid,
-    );
+  createUser(insertUser: InsertUser) {
+    return this.firestoreStorage.createUser(insertUser);
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentUserId++;
-    const user: User = { 
-      ...insertUser,
-      role: insertUser.role || "user",
-      avatar: insertUser.avatar || null,
-      id,
-      createdAt: new Date(),
-    };
-    this.users.set(id, user);
-    return user;
+  getAllUsers() {
+    return this.firestoreStorage.getAllUsers();
   }
 
-  async getAllUsers(): Promise<User[]> {
-    return Array.from(this.users.values());
+  getProduct(id: string) {
+    return this.firestoreStorage.getProduct(id);
   }
 
-  // Product methods
-  async getProduct(id: number): Promise<Product | undefined> {
-    return this.products.get(id);
+  getProducts(filters?: {
+    search?: string;
+    category?: string;
+    sortBy?: string;
+  }) {
+    return this.firestoreStorage.getProducts(filters);
   }
 
-  async getProducts(filters?: { search?: string; category?: string; sortBy?: string }): Promise<Product[]> {
-    let products = Array.from(this.products.values()).filter(p => p.active);
-
-    if (filters?.search) {
-      const searchLower = filters.search.toLowerCase();
-      products = products.filter(p => 
-        p.name.toLowerCase().includes(searchLower) ||
-        p.description.toLowerCase().includes(searchLower) ||
-        p.brand.toLowerCase().includes(searchLower) ||
-        p.tags.some(tag => tag.toLowerCase().includes(searchLower))
-      );
-    }
-
-    if (filters?.category && filters.category !== 'all') {
-      products = products.filter(p => p.category === filters.category);
-    }
-
-    if (filters?.sortBy) {
-      switch (filters.sortBy) {
-        case 'price_low':
-          products.sort((a, b) => parseFloat(a.price) - parseFloat(b.price));
-          break;
-        case 'price_high':
-          products.sort((a, b) => parseFloat(b.price) - parseFloat(a.price));
-          break;
-        case 'newest':
-          products.sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
-          break;
-        default:
-          products.sort((a, b) => a.name.localeCompare(b.name));
-      }
-    }
-
-    return products;
+  getFeaturedProducts() {
+    return this.firestoreStorage.getFeaturedProducts();
   }
 
-  async getFeaturedProducts(): Promise<Product[]> {
-    return Array.from(this.products.values()).filter(p => p.featured && p.active);
+  searchProducts(query: string) {
+    return this.firestoreStorage.searchProducts(query);
   }
 
-  async searchProducts(query: string): Promise<Product[]> {
-    const searchLower = query.toLowerCase();
-    return Array.from(this.products.values()).filter(p =>
-      p.active && (
-        p.name.toLowerCase().includes(searchLower) ||
-        p.brand.toLowerCase().includes(searchLower) ||
-        p.description.toLowerCase().includes(searchLower) ||
-        p.tags.some(tag => tag.toLowerCase().includes(searchLower))
-      )
-    ).slice(0, 10); // Limit search results
+  createProduct(insertProduct: InsertProduct) {
+    return this.firestoreStorage.createProduct(insertProduct);
   }
 
-  async createProduct(insertProduct: InsertProduct): Promise<Product> {
-    const id = this.currentProductId++;
-    const product: Product = { 
-      id,
-      name: insertProduct.name,
-      description: insertProduct.description,
-      price: insertProduct.price,
-      category: insertProduct.category,
-      brand: insertProduct.brand,
-      images: insertProduct.images || [],
-      tags: insertProduct.tags || [],
-      stock: insertProduct.stock ?? 0,
-      featured: insertProduct.featured ?? false,
-      active: insertProduct.active ?? true,
-      createdAt: new Date(),
-    };
-    this.products.set(id, product);
-    return product;
+  updateProduct(id: string, product: Partial<InsertProduct>) {
+    return this.firestoreStorage.updateProduct(id, product);
   }
 
-  async updateProduct(id: number, updateData: Partial<InsertProduct>): Promise<Product | undefined> {
-    const product = this.products.get(id);
-    if (!product) return undefined;
-
-    const updatedProduct = { ...product, ...updateData };
-    this.products.set(id, updatedProduct);
-    return updatedProduct;
+  deleteProduct(id: string) {
+    return this.firestoreStorage.deleteProduct(id);
   }
 
-  async deleteProduct(id: number): Promise<boolean> {
-    return this.products.delete(id);
+  getAllProducts() {
+    return this.firestoreStorage.getAllProducts();
   }
 
-  async getAllProducts(): Promise<Product[]> {
-    return Array.from(this.products.values());
+  createOrder(insertOrder: InsertOrder) {
+    return this.firestoreStorage.createOrder(insertOrder);
   }
 
-  // Order methods
-  async createOrder(insertOrder: InsertOrder): Promise<Order> {
-    const id = this.currentOrderId++;
-    const order: Order = { 
-      ...insertOrder,
-      status: insertOrder.status || "pending",
-      id,
-      createdAt: new Date(),
-    };
-    this.orders.set(id, order);
-    return order;
+  getOrdersByUser(userId: string) {
+    return this.firestoreStorage.getOrdersByUser(userId);
   }
 
-  async getOrdersByUser(userId: number): Promise<Order[]> {
-    return Array.from(this.orders.values()).filter(o => o.userId === userId);
+  getAllOrders() {
+    return this.firestoreStorage.getAllOrders();
   }
 
-  async getAllOrders(): Promise<Order[]> {
-    return Array.from(this.orders.values());
+  updateOrderStatus(id: string, status: string) {
+    return this.firestoreStorage.updateOrderStatus(id, status);
   }
 
-  async updateOrderStatus(id: number, status: string): Promise<Order | undefined> {
-    const order = this.orders.get(id);
-    if (!order) return undefined;
-
-    order.status = status;
-    this.orders.set(id, order);
-    return order;
+  addToCart(insertCartItem: InsertCartItem) {
+    return this.firestoreStorage.addToCart(insertCartItem);
   }
 
-  // Cart methods
-  async addToCart(insertCartItem: InsertCartItem): Promise<CartItem> {
-    const id = this.currentCartItemId++;
-    const cartItem: CartItem = { 
-      ...insertCartItem,
-      quantity: insertCartItem.quantity || 1,
-      id,
-      createdAt: new Date(),
-    };
-    this.cartItems.set(id, cartItem);
-    return cartItem;
+  getCartItems(userId: string) {
+    return this.firestoreStorage.getCartItems(userId);
   }
 
-  async getCartItems(userId: number): Promise<CartItem[]> {
-    return Array.from(this.cartItems.values()).filter(c => c.userId === userId);
+  updateCartItem(id: string, quantity: number) {
+    return this.firestoreStorage.updateCartItem(id, quantity);
   }
 
-  async updateCartItem(id: number, quantity: number): Promise<CartItem | undefined> {
-    const cartItem = this.cartItems.get(id);
-    if (!cartItem) return undefined;
-
-    cartItem.quantity = quantity;
-    this.cartItems.set(id, cartItem);
-    return cartItem;
+  removeFromCart(id: string) {
+    return this.firestoreStorage.removeFromCart(id);
   }
 
-  async removeFromCart(id: number): Promise<boolean> {
-    return this.cartItems.delete(id);
+  clearCart(userId: string) {
+    return this.firestoreStorage.clearCart(userId);
   }
 
-  async clearCart(userId: number): Promise<boolean> {
-    const userCartItems = Array.from(this.cartItems.entries()).filter(
-      ([_, item]) => item.userId === userId
-    );
-    
-    userCartItems.forEach(([id]) => {
-      this.cartItems.delete(id);
-    });
-    
-    return true;
+  getAdminStats() {
+    return this.firestoreStorage.getAdminStats();
   }
 
-  // Admin methods
-  async getAdminStats(): Promise<{
-    totalSales: number;
-    totalOrders: number;
-    totalProducts: number;
-    totalUsers: number;
-  }> {
-    const orders = Array.from(this.orders.values());
-    const totalSales = orders.reduce((sum, order) => sum + parseFloat(order.total), 0);
-    
-    return {
-      totalSales,
-      totalOrders: orders.length,
-      totalProducts: this.products.size,
-      totalUsers: this.users.size,
-    };
+  // Delegate file operations to FirebaseFileStorage
+
+
+  deleteFile(filePath: string) {
+    return this.fileStorage.deleteFile(filePath);
+  }
+
+  uploadBuffer(destination: string, buffer: Buffer, contentType: string) {
+    return this.fileStorage.uploadBuffer(destination, buffer, contentType);
   }
 }
 
-export const storage = new DatabaseStorage();
+// You'll need to initialize this with your Firebase instances
+// Example:
+// export const storage = new Storage(admin.firestore(), admin.storage());
+
+export { Storage };

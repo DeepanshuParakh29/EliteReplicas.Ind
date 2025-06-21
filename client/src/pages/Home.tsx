@@ -86,6 +86,8 @@ export default function Home() {
             <div className="max-w-md mx-auto">
               <div className="flex rounded-full overflow-hidden neo-shadow">
                 <Input 
+                  id="newsletter-email"
+                  name="newsletterEmail"
                   type="email" 
                   placeholder="Enter your email" 
                   className="flex-1 px-6 py-4 text-rich-black bg-white border-0 focus:ring-0 rounded-none" 

@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { Product } from "@shared/schema";
 import { useAuth } from "./AuthContext";
+//import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 interface CartItem {
   product: Product;
@@ -37,57 +39,128 @@ export const CartProvider = ({ children }: CartProviderProps) => {
   const [items, setItems] = useState<CartItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const { user } = useAuth();
+  const { toast } = useToast();
 
   // Load cart from localStorage on mount
   useEffect(() => {
-    const savedCart = localStorage.getItem("cart");
-    if (savedCart) {
-      setItems(JSON.parse(savedCart));
+    try {
+      const savedCart = localStorage.getItem("cart");
+      if (savedCart) {
+        setItems(JSON.parse(savedCart));
+      }
+    } catch (error: any) {
+      console.error("Error loading cart from localStorage:", error);
+      toast({
+        title: "Cart Error",
+        description: error.message || "Failed to load cart from local storage.",
+        variant: "destructive",
+      });
     }
-  }, []);
+  }, [toast]);
 
   // Save cart to localStorage whenever items change
   useEffect(() => {
-    localStorage.setItem("cart", JSON.stringify(items));
-  }, [items]);
+    try {
+      localStorage.setItem("cart", JSON.stringify(items));
+    } catch (error: any) {
+      console.error("Error saving cart to localStorage:", error);
+      toast({
+        title: "Cart Error",
+        description: error.message || "Failed to save cart to local storage.",
+        variant: "destructive",
+      });
+    }
+  }, [items, toast]);
 
   const addItem = (product: Product, quantity = 1) => {
-    setItems(currentItems => {
-      const existingItem = currentItems.find(item => item.product.id === product.id);
-      
-      if (existingItem) {
-        return currentItems.map(item =>
-          item.product.id === product.id
-            ? { ...item, quantity: item.quantity + quantity }
-            : item
-        );
-      }
-      
-      return [...currentItems, { product, quantity }];
-    });
+    try {
+      setItems(currentItems => {
+        const existingItem = currentItems.find(item => item.product.id === product.id);
+        
+        if (existingItem) {
+          return currentItems.map(item =>
+            item.product.id === product.id
+              ? { ...item, quantity: item.quantity + quantity }
+              : item
+          );
+        }
+        
+        return [...currentItems, { product, quantity }];
+      });
+      toast({
+        title: "Item Added",
+        description: `${product.name} added to cart.`,
+      });
+    } catch (error: any) {
+      console.error("Error adding item to cart:", error);
+      toast({
+        title: "Cart Error",
+        description: error.message || "Failed to add item to cart.",
+        variant: "destructive",
+      });
+    }
   };
 
   const removeItem = (productId: number) => {
-    setItems(currentItems => currentItems.filter(item => item.product.id !== productId));
+    try {
+      setItems(currentItems => currentItems.filter(item => Number(item.product.id) !== productId));
+      toast({
+        title: "Item Removed",
+        description: "Item removed from cart.",
+      });
+    } catch (error: any) {
+      console.error("Error removing item from cart:", error);
+      toast({
+        title: "Cart Error",
+        description: error.message || "Failed to remove item from cart.",
+        variant: "destructive",
+      });
+    }
   };
 
   const updateQuantity = (productId: number, quantity: number) => {
-    if (quantity <= 0) {
-      removeItem(productId);
-      return;
+    try {
+      if (quantity <= 0) {
+        removeItem(productId);
+        return;
+      }
+      
+      setItems(currentItems =>
+        currentItems.map(item =>
+          Number(item.product.id) === productId
+            ? { ...item, quantity: quantity }
+            : item
+        )
+      );
+      toast({
+        title: "Quantity Updated",
+        description: "Item quantity updated.",
+      });
+    } catch (error: any) {
+      console.error("Error updating item quantity:", error);
+      toast({
+        title: "Cart Error",
+        description: error.message || "Failed to update item quantity.",
+        variant: "destructive",
+      });
     }
-    
-    setItems(currentItems =>
-      currentItems.map(item =>
-        item.product.id === productId
-          ? { ...item, quantity }
-          : item
-      )
-    );
   };
 
   const clearCart = () => {
-    setItems([]);
+    try {
+      setItems([]);
+      toast({
+        title: "Cart Cleared",
+        description: "All items removed from cart.",
+      });
+    } catch (error: any) {
+      console.error("Error clearing cart:", error);
+      toast({
+        title: "Cart Error",
+        description: error.message || "Failed to clear cart.",
+        variant: "destructive",
+      });
+    }
   };
 
   const total = items.reduce((sum, item) => sum + (parseFloat(item.product.price) * item.quantity), 0);

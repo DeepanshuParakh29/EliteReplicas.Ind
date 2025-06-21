@@ -1,0 +1,44 @@
+// Allow cross-origin access
+service firebase.storage {
+  match /b/{bucket}/o {
+    // This rule allows CORS access to all files
+    match /{allPaths=**} {
+      allow read, write: if request.method == 'OPTIONS' || 
+                         request.method == 'GET' || 
+                         request.method == 'PUT' || 
+                         request.method == 'POST' || 
+                         request.method == 'DELETE';
+    }
+  }
+}
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow anyone to view product images
+    match /products/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+                    request.resource.size < 5 * 1024 * 1024 && // 5MB
+                    request.resource.contentType.matches('image/.*') &&
+                    (request.auth.token.admin == true || 
+                     get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+    
+    // Allow users to upload their profile images
+    match /users/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+                    request.auth.uid == userId &&
+                    request.resource.size < 5 * 1024 * 1024 && // 5MB
+                    request.resource.contentType.matches('image/.*');
+    }
+    
+    // Allow admin to upload any files
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null && 
+                           (request.auth.token.admin == true || 
+                            get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+  }
+}
