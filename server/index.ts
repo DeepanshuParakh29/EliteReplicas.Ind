@@ -5,8 +5,7 @@ import { initializeApp, cert, getApps, getApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 
-// Import the service account key
-import serviceAccount from './me.json';
+// Firebase configuration from environment variables
 
 import { setupVite, serveStatic, log } from "./vite";
 
@@ -36,39 +35,36 @@ interface ServiceAccount {
   universe_domain: string;
 }
 
-// Initialize Firebase Admin if not already initialized
-const firebaseApp = getApps().length === 0 
-  ? initializeApp({
-      credential: cert({
-        projectId: serviceAccount.project_id,
-        clientEmail: serviceAccount.client_email,
-        privateKey: serviceAccount.private_key.replace(/\\\\n/g, '\\n')
-      }),
-      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || 'couture-control.appspot.com',
-      databaseURL: `https://${serviceAccount.project_id}.firebaseio.com`
-    } as any) // Using type assertion as a workaround for type issues
-  : getApp();
+// Initialize Firebase Admin if not already initialized (optional for development)
+let firebaseApp;
+try {
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
-console.log('Firebase Admin SDK initialized successfully with service account credentials.');
-/*
-// Method 2: Using environment variable with JSON string
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY || '{}');
-if (Object.keys(serviceAccount).length > 0) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-  });
-} else {
-  console.warn('Firebase Admin SDK not initialized: FIREBASE_SERVICE_ACCOUNT_KEY environment variable is missing or empty.');
+  if (projectId && clientEmail && privateKey && getApps().length === 0) {
+    firebaseApp = initializeApp({
+      credential: cert({
+        projectId,
+        clientEmail,
+        privateKey: privateKey.replace(/\\n/g, '\n')
+      })
+    });
+  } else if (getApps().length > 0) {
+    firebaseApp = getApp();
+  }
+} catch (error) {
+  console.warn('Firebase initialization skipped:', error.message);
 }
-*/
+
+console.log('Firebase Admin SDK initialized successfully.');
 
 // Import and setup routes AFTER creating the app
-import { storageService } from "./storage";
+import { simpleStorage, simpleFileStorage } from "./simple-storage";
 import appRoutes from "./routes";
 
-// Initialize Firestore and Storage with the initialized app
-// Setup routes with the unified storage service
-app.use('/', appRoutes(storageService, storageService));
+// Setup routes with the simple storage service
+app.use('/', appRoutes(simpleStorage, simpleFileStorage));
 
 // Logging middleware
 app.use((req: Request, res: Response, next: NextFunction) => {

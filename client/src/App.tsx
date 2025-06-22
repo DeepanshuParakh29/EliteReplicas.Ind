@@ -16,6 +16,8 @@ import Profile from "./pages/Profile";
 import Admin from "./pages/Admin";
 import About from "./pages/About";
 import Contact from "./pages/Contact";
+import Checkout from "./pages/Checkout";
+import Orders from "./pages/Orders";
 import NotFound from "./pages/not-found";
 
 function Router() {
@@ -25,6 +27,8 @@ function Router() {
         <Route path="/" component={Home} />
         <Route path="/products" component={Products} />
         <Route path="/product/:id" component={ProductDetail} />
+        <Route path="/checkout" component={Checkout} />
+        <Route path="/orders" component={Orders} />
         <Route path="/profile" component={Profile} />
         <Route path="/admin" component={Admin} />
         <Route path="/about" component={About} />

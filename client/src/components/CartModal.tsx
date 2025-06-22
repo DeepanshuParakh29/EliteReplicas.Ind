@@ -114,7 +114,13 @@ export default function CartModal() {
                     <span className="text-2xl font-bold text-matte-gold">${total.toFixed(2)}</span>
                   </div>
                   <div className="space-y-3">
-                    <Button className="w-full bg-matte-gold text-rich-black hover:bg-yellow-500 py-4 text-lg neo-shadow">
+                    <Button 
+                      className="w-full bg-matte-gold text-rich-black hover:bg-yellow-500 py-4 text-lg neo-shadow"
+                      onClick={() => {
+                        setIsOpen(false);
+                        window.location.href = '/checkout';
+                      }}
+                    >
                       Checkout
                     </Button>
                     <Button 

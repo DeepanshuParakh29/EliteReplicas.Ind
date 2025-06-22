@@ -1,4 +1,4 @@
-import { IStorage, IFileStorage } from "./storage";
+import { IStorage, IFileStorage } from "@shared/schema";
 import { insertUserSchema, insertProductSchema, insertOrderSchema } from "@shared/schema";
 import express, { Request, Response } from 'express';
 import multer from 'multer';
@@ -186,6 +186,16 @@ app.post("/api/orders", async (req, res) => {
       return res.status(400).json({ message: "Invalid order data", errors: error.errors });
     }
     res.status(500).json({ message: "Failed to create order" });
+  }
+});
+
+app.get("/api/orders/user/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const orders = await storage.getOrdersByUser(userId);
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch user orders" });
   }
 });
 
@@ -379,6 +389,33 @@ app.post("/api/upload", async (req: Request, res: Response) => {
   }
 });
 
+// Serve uploaded files
+app.get("/api/files/:filename", async (req: Request, res: Response) => {
+  try {
+    const filename = decodeURIComponent(req.params.filename);
+    const fileData = (fileStorage as any).getFile(filename);
+    
+    if (!fileData) {
+      return res.status(404).json({ message: 'File not found' });
+    }
+    
+    if (fileData.startsWith('data:')) {
+      const [header, base64Data] = fileData.split(',');
+      const mimeMatch = header.match(/data:([^;]+)/);
+      const mimeType = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+      
+      const buffer = Buffer.from(base64Data, 'base64');
+      res.set('Content-Type', mimeType);
+      res.send(buffer);
+    } else {
+      res.redirect(fileData);
+    }
+  } catch (error) {
+    console.error('Serve file error:', error);
+    res.status(500).json({ message: 'Failed to serve file' });
+  }
+});
+
 app.delete("/api/files", async (req: Request, res: Response) => {
   try {
     const { filePath } = req.body;
@@ -390,6 +427,71 @@ app.delete("/api/files", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("File deletion failed:", error);
     res.status(500).json({ message: "Failed to delete file" });
+  }
+});
+
+// Payment routes - Razorpay integration
+app.post("/api/payment/create-order", async (req: Request, res: Response) => {
+  try {
+    const { amount, currency = 'INR' } = req.body;
+    
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      return res.status(500).json({ message: 'Payment gateway not configured' });
+    }
+    
+    const Razorpay = (await import('razorpay')).default;
+    const razorpay = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
+
+    const options = {
+      amount: Math.round(amount * 100), // Razorpay expects amount in paise
+      currency,
+      receipt: `order_${Date.now()}`,
+    };
+
+    const order = await razorpay.orders.create(options);
+    res.json(order);
+  } catch (error) {
+    console.error('Payment order creation error:', error);
+    res.status(500).json({ message: 'Failed to create payment order' });
+  }
+});
+
+app.post("/api/payment/verify", async (req: Request, res: Response) => {
+  try {
+    const crypto = await import('crypto');
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderData } = req.body;
+    
+    if (!process.env.RAZORPAY_KEY_SECRET) {
+      return res.status(500).json({ message: 'Payment gateway not configured' });
+    }
+    
+    const body = razorpay_order_id + "|" + razorpay_payment_id;
+    const expectedSignature = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(body.toString())
+      .digest("hex");
+
+    if (expectedSignature === razorpay_signature) {
+      // Payment verified successfully, create order
+      if (orderData) {
+        const order = await storage.createOrder({
+          ...orderData,
+          status: 'paid',
+          paymentId: razorpay_payment_id
+        });
+        res.json({ verified: true, order });
+      } else {
+        res.json({ verified: true });
+      }
+    } else {
+      res.status(400).json({ verified: false, message: 'Payment verification failed' });
+    }
+  } catch (error) {
+    console.error('Payment verification error:', error);
+    res.status(500).json({ message: 'Payment verification failed' });
   }
 });
 
