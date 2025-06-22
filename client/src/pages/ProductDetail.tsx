@@ -1,6 +1,7 @@
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Product } from "@shared/schema";
+import { Product } from "@/types";
+import { getProductImageUrl, getProductBrand } from "@/utils/productUtils";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/context/CartContext";
 import { motion } from "framer-motion";
@@ -69,23 +70,36 @@ export default function ProductDetail() {
           >
             <div className="aspect-square rounded-2xl overflow-hidden glass-effect">
               <img
-                src={product.images[selectedImageIndex] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800"}
+                src={
+                  (Array.isArray(product.images) && product.images[selectedImageIndex])
+                    ? (typeof product.images[selectedImageIndex] === 'string' 
+                        ? product.images[selectedImageIndex] 
+                        : (product.images[selectedImageIndex] as any).url)
+                    : "https://images.unsplash.com/photo-1523275335684-37898b6baf30?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=800"
+                }
                 alt={product.name}
                 className="w-full h-full object-cover"
               />
             </div>
             <div className="grid grid-cols-4 gap-4">
-              {product.images.length > 0 ? product.images.map((image, index) => (
-                <button
-                  key={index}
-                  onClick={() => setSelectedImageIndex(index)}
-                  className={`aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
-                    selectedImageIndex === index ? "border-matte-gold" : "border-transparent"
-                  }`}
-                >
-                  <img src={image} alt={`${product.name} ${index + 1}`} className="w-full h-full object-cover" />
-                </button>
-              )) : (
+              {Array.isArray(product.images) && product.images.length > 0 ? product.images.map((image, index) => {
+                const imageUrl = typeof image === 'string' ? image : (image as any).url;
+                return (
+                  <button
+                    key={index}
+                    onClick={() => setSelectedImageIndex(index)}
+                    className={`aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
+                      selectedImageIndex === index ? "border-matte-gold" : "border-transparent"
+                    }`}
+                  >
+                    <img 
+                      src={imageUrl} 
+                      alt={`${product.name} ${index + 1}`} 
+                      className="w-full h-full object-cover" 
+                    />
+                  </button>
+                );
+              }) : (
                 [1, 2, 3, 4].map((i) => (
                   <div key={i} className="aspect-square glass-effect rounded-lg" />
                 ))
@@ -103,52 +117,58 @@ export default function ProductDetail() {
             <div>
               <h1 className="font-playfair text-4xl font-bold mb-2">{product.name}</h1>
               <p className="text-xl text-matte-gold">{product.brand}</p>
-              <div className="flex items-center space-x-2 mt-2">
-                <div className="flex items-center">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Star key={star} className="w-5 h-5 fill-matte-gold text-matte-gold" />
-                  ))}
-                </div>
-                <span className="text-gray-400">(127 reviews)</span>
+              <div className="flex items-center space-x-2">
+                <span className="text-3xl font-bold">
+                  ${typeof product.price === 'number' ? product.price.toFixed(2) : '0.00'}
+                </span>
+                {product.compareAtPrice && (
+                  <span className="text-gray-400 line-through">
+                    ${typeof product.compareAtPrice === 'number' ? product.compareAtPrice.toFixed(2) : '0.00'}
+                  </span>
+                )}
               </div>
+              <span className="text-gray-400">(127 reviews)</span>
             </div>
-
-            <div className="text-4xl font-bold text-matte-gold">${product.price}</div>
 
             <p className="text-gray-300 text-lg leading-relaxed">{product.description}</p>
 
             {/* Quantity Selector */}
             <div className="flex items-center space-x-4">
               <span className="text-lg">Quantity:</span>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center border border-gray-700 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => setQuantity(q => Math.max(1, q - 1))}
+                    className="px-4 py-2 text-lg hover:bg-gray-800 transition-colors"
+                    aria-label="Decrease quantity"
+                  >
+                    -
+                  </button>
+                  <span className="px-4 py-2">{quantity}</span>
+                  <button
+                    onClick={() => setQuantity(q => q + 1)}
+                    className="px-4 py-2 text-lg hover:bg-gray-800 transition-colors"
+                    aria-label="Increase quantity"
+                  >
+                    +
+                  </button>
+                </div>
                 <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  className="border-matte-gold/20 hover:border-matte-gold"
+                  onClick={() => {
+                    if (product) {
+                      addItem(product, quantity);
+                    }
+                  }}
+                  disabled={!product}
+                  className="bg-matte-gold text-rich-black hover:bg-matte-gold/90 flex-1 py-6 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  -
-                </Button>
-                <span className="w-12 text-center text-lg">{quantity}</span>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setQuantity(quantity + 1)}
-                  className="border-matte-gold/20 hover:border-matte-gold"
-                >
-                  +
+                  Add to Cart
                 </Button>
               </div>
             </div>
 
             {/* Action Buttons */}
             <div className="flex space-x-4">
-              <Button
-                onClick={handleAddToCart}
-                className="flex-1 bg-matte-gold text-rich-black hover:bg-yellow-500 py-4 text-lg neo-shadow"
-              >
-                Add to Cart
-              </Button>
               <Button variant="outline" size="icon" className="border-matte-gold/20 hover:border-matte-gold">
                 <Heart className="w-5 h-5" />
               </Button>

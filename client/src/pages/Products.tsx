@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Product } from "@shared/schema";
+import { Product } from "@/types";
+import { getProductImageUrl, getProductBrand } from "@/utils/productUtils";
 import ProductCard from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,11 +18,23 @@ export default function Products() {
 
   const { data: products, isLoading } = useQuery<Product[]>({
     queryKey: ["/api/products", { search: searchQuery, category, sortBy, priceRange }],
+    initialData: [] // Ensure we always have an array
   });
 
-  const filteredProducts = products?.filter(product => {
-    const price = parseFloat(product.price);
+  const filteredProducts = (products || []).filter(product => {
+    const price = typeof product.price === 'number' ? product.price : 0;
     return price >= priceRange[0] && price <= priceRange[1];
+  }).sort((a, b) => {
+    switch (sortBy) {
+      case 'price_low':
+        return (a.price as number) - (b.price as number);
+      case 'price_high':
+        return (b.price as number) - (a.price as number);
+      case 'newest':
+        return new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime();
+      default: // name
+        return a.name.localeCompare(b.name);
+    }
   });
 
   return (
@@ -93,7 +106,9 @@ export default function Products() {
 
             {/* Price Range */}
             <div className="space-y-2">
-              <label className="text-sm text-gray-400">Price Range: ${priceRange[0]} - ${priceRange[1]}</label>
+              <label className="text-sm text-gray-400">
+                Price Range: ${priceRange[0].toFixed(2)} - ${priceRange[1].toFixed(2)}
+              </label>
               <Slider
                 value={priceRange}
                 onValueChange={setPriceRange}
@@ -127,7 +142,7 @@ export default function Products() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: index * 0.1 }}
               >
-                <ProductCard product={product} />
+                <ProductCard product={product} key={product.id} />
               </motion.div>
             ))}
           </motion.div>

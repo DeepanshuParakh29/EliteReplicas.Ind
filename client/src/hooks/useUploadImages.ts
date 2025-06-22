@@ -11,26 +11,40 @@ export async function uploadImages(files: File[]): Promise<string[]> {
   const urls: string[] = [];
 
   try {
+    // Use server-side upload endpoint instead of direct Firebase upload
     for (const file of files) {
       if (!file.type.startsWith('image/')) {
         console.warn(`Skipping non-image file: ${file.name}`);
         continue;
       }
 
-      const uniqueName = `${Date.now()}-${file.name.replace(/[^\w.]+/g, '-')}`;
-      const storageRef = ref(storage, `product-images/${uniqueName}`);
-      
-      console.log(`Uploading ${file.name} to ${storageRef.fullPath}`);
+      // Create form data for file upload
+      const formData = new FormData();
+      formData.append('image', file);
+
+      console.log(`Uploading ${file.name} via API endpoint`);
       
       try {
-        const snapshot = await uploadBytes(storageRef, file, {
-          contentType: file.type,
+        // Use the server API endpoint for upload
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
         });
-        console.log('Upload successful:', snapshot);
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Upload failed');
+        }
+
+        const result = await response.json();
+        console.log('Upload successful:', result);
         
-        const url = await getDownloadURL(storageRef);
-        console.log('File available at:', url);
-        urls.push(url);
+        if (result.success && result.fileUrl) {
+          console.log('File available at:', result.fileUrl);
+          urls.push(result.fileUrl);
+        } else {
+          throw new Error('Upload succeeded but no URL was returned');
+        }
       } catch (error) {
         const errorMessage = error instanceof Error 
           ? error.message 

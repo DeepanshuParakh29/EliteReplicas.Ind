@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { Product } from "@shared/schema";
+import { Product } from "@/types";
 import { useAuth } from "./AuthContext";
 //import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -12,8 +12,8 @@ interface CartItem {
 interface CartContextType {
   items: CartItem[];
   addItem: (product: Product, quantity?: number) => void;
-  removeItem: (productId: number) => void;
-  updateQuantity: (productId: number, quantity: number) => void;
+  removeItem: (productId: string) => void;
+  updateQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
   total: number;
   itemCount: number;
@@ -21,7 +21,7 @@ interface CartContextType {
   setIsOpen: (open: boolean) => void;
 }
 
-const CartContext = createContext<CartContextType | undefined>(undefined);
+export const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const useCart = () => {
   const context = useContext(CartContext);
@@ -101,9 +101,9 @@ export const CartProvider = ({ children }: CartProviderProps) => {
     }
   };
 
-  const removeItem = (productId: number) => {
+  const removeItem = (productId: string) => {
     try {
-      setItems(currentItems => currentItems.filter(item => Number(item.product.id) !== productId));
+      setItems(currentItems => currentItems.filter(item => item.product.id !== productId));
       toast({
         title: "Item Removed",
         description: "Item removed from cart.",
@@ -118,7 +118,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
     }
   };
 
-  const updateQuantity = (productId: number, quantity: number) => {
+  const updateQuantity = (productId: string, quantity: number) => {
     try {
       if (quantity <= 0) {
         removeItem(productId);
@@ -127,11 +127,12 @@ export const CartProvider = ({ children }: CartProviderProps) => {
       
       setItems(currentItems =>
         currentItems.map(item =>
-          Number(item.product.id) === productId
-            ? { ...item, quantity: quantity }
+          item.product.id === productId
+            ? { ...item, quantity: Math.max(1, quantity) } // Ensure quantity is at least 1
             : item
         )
       );
+      
       toast({
         title: "Quantity Updated",
         description: "Item quantity updated.",
@@ -163,7 +164,10 @@ export const CartProvider = ({ children }: CartProviderProps) => {
     }
   };
 
-  const total = items.reduce((sum, item) => sum + (parseFloat(item.product.price) * item.quantity), 0);
+  const total = items.reduce((sum, item) => {
+    const price = typeof item.product.price === 'number' ? item.product.price : 0;
+    return sum + (price * item.quantity);
+  }, 0);
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (

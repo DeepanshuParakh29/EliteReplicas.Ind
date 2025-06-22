@@ -1,9 +1,10 @@
 import { motion } from "framer-motion";
-import { Product } from "@shared/schema";
+import { Product } from "@/types";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/context/CartContext";
 import { Link } from "wouter";
 import { useState } from "react";
+import { getProductImageUrl } from "@/utils/productUtils";
 
 interface ProductCardProps {
   product: Product;
@@ -29,8 +30,12 @@ export default function ProductCard({ product }: ProductCardProps) {
     <Link href={`/product/${product.id}`}>
       <div className="bg-deep-charcoal rounded-lg shadow-xl overflow-hidden transform transition-all duration-300 hover:scale-102 glass-effect border border-matte-gold/20">
         <div className="relative overflow-hidden">
-        <img src={product.images[0]} alt={product.name} className="w-full h-48 object-cover object-center rounded-t-lg" />
-          {product.featured && (
+          <img 
+            src={getProductImageUrl(product)} 
+            alt={product.name} 
+            className="w-full h-48 object-cover object-center rounded-t-lg" 
+          />
+          {product.isFeatured && (
             <div className="absolute top-4 left-4 bg-matte-gold text-rich-black px-3 py-1 rounded-full text-sm font-semibold">
               Featured
             </div>
@@ -40,7 +45,7 @@ export default function ProductCard({ product }: ProductCardProps) {
           <h3 className="text-xl font-playfair text-matte-gold mb-2 truncate">{product.name}</h3>
           <p className="text-cream-white/70 text-sm mb-4 line-clamp-2">{product.description}</p>
           <div className="flex justify-between items-baseline mt-4">
-            <span className="text-matte-gold font-bold text-2xl">${parseFloat(product.price).toFixed(2)}</span>
+            <span className="text-matte-gold font-bold text-2xl">${typeof product.price === 'number' ? product.price.toFixed(2) : '0.00'}</span>
             <Button onClick={handleAddToCart} className="bg-matte-gold text-rich-black hover:bg-matte-gold/90 transition-colors duration-200">
               {isAdding ? "Added!" : "Add to Cart"}
             </Button>

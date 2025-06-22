@@ -4,7 +4,8 @@ import { X, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useQuery } from "@tanstack/react-query";
-import { Product } from "@shared/schema";
+import { Product } from "@/types";
+import { getProductImageUrl, getProductBrand } from "@/utils/productUtils";
 import { Link } from "wouter";
 
 interface SearchModalProps {
@@ -83,13 +84,15 @@ export default function SearchModal({ onClose }: SearchModalProps) {
                           transition={{ duration: 0.2 }}
                         >
                           <img 
-                            src={product.images[0] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?ixlib=rb-4.0.3&auto=format&fit=crop&w=60&h=60"} 
+                            src={getProductImageUrl(product)} 
                             alt={product.name}
                             className="w-12 h-12 object-cover rounded-lg" 
                           />
                           <div className="flex-1">
                             <h4 className="font-semibold">{product.name}</h4>
-                            <p className="text-gray-400 text-sm">{product.brand} • ${product.price}</p>
+                            <p className="text-gray-400 text-sm">
+                              {getProductBrand(product)} • ${typeof product.price === 'number' ? product.price.toFixed(2) : '0.00'}
+                            </p>
                           </div>
                         </motion.div>
                       </Link>

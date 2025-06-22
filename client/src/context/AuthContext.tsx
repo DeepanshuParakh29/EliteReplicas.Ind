@@ -1,21 +1,27 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { User as FirebaseUser, onAuthStateChanged } from "firebase/auth";
+import { User as FirebaseUser, onAuthStateChanged, signOut as firebaseSignOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { handleRedirectResult, signInWithGoogle } from "@/lib/auth";
-import { User } from "@shared/schema";
+import { User } from "@/types";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { userService } from "@/services/user";
+import { userService, CreateUserInput } from "@/services/user";
+
+// Extend the default User type to include Firebase-specific fields
+type AuthUser = User & {
+  firebaseUid: string;
+  name?: string;
+};
 
 interface AuthContextType {
   firebaseUser: FirebaseUser | null;
-  user: User | null;
+  user: AuthUser | null;
   loading: boolean;
   signOut: () => Promise<void>;
   signInWithGooglePopup: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -31,7 +37,7 @@ interface AuthProviderProps {
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [location, navigate] = useLocation();
   const { toast } = useToast();
@@ -96,7 +102,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           try {
             const userData = await userService.getUserByFirebaseUid(firebaseUser.uid);
             console.log("User data fetched successfully:", userData);
-            setUser(userData);
+            setUser({
+              ...userData,
+              firebaseUid: firebaseUser.uid,
+              name: firebaseUser.displayName || userData.email.split('@')[0],
+            });
             if (location !== "/Home") {
               navigate("/");
             }
@@ -104,17 +114,36 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             if (error.status === 404) { // Check for 404 status code
               console.log("User not found in backend, attempting to create new user.");
               try {
-                const newUser = await userService.createUser({
-                  id: firebaseUser.uid,
-                  firebaseUid: firebaseUser.uid,
+                const userData: CreateUserInput = {
                   email: firebaseUser.email!,
-                  name: firebaseUser.displayName || firebaseUser.email!.split("@")[0],
-                  avatar: firebaseUser.photoURL,
-                });
-                console.log("New user created successfully:", newUser);
-                setUser(newUser);
-                if (location !== "/Home") {
-                  navigate("/Home");
+                  firstName: firebaseUser.displayName?.split(' ')[0],
+                  lastName: firebaseUser.displayName?.split(' ').slice(1).join(' '),
+                  fullName: firebaseUser.displayName || firebaseUser.email!.split('@')[0],
+                  avatar: firebaseUser.photoURL || undefined,
+                  role: 'user',
+                  isActive: true,
+                  emailVerified: firebaseUser.emailVerified,
+                  firebaseUid: firebaseUser.uid,
+                };
+                
+                try {
+                  const newUser = await userService.createUser(userData);
+                  console.log("New user created successfully:", newUser);
+                  setUser({
+                    ...newUser,
+                    firebaseUid: firebaseUser.uid,
+                    name: firebaseUser.displayName || firebaseUser.email!.split('@')[0],
+                  });
+                  if (location !== "/Home") {
+                    navigate("/Home");
+                  }
+                } catch (error: any) {
+                  console.error("Error creating user:", error);
+                  toast({
+                    title: "Error Creating Account",
+                    description: error.message || "Failed to create user account",
+                    variant: "destructive",
+                  });
                 }
               } catch (createError: any) {
                 toast({
@@ -151,7 +180,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const signOut = async () => {
     try {
-      await auth.signOut();
+      await firebaseSignOut(auth);
       setUser(null);
       setFirebaseUser(null);
       toast({
@@ -165,6 +194,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         description: error.message || "Failed to sign out",
         variant: "destructive",
       });
+      throw error; // Re-throw to allow error handling in components
     }
   };
 

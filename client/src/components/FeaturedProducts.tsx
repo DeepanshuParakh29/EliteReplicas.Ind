@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Product } from "@shared/schema";
+import { Product } from "@/types";
 import ProductCard from "./ProductCard";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";

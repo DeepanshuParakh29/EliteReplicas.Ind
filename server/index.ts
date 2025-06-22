@@ -1,6 +1,13 @@
 import { createServer } from "http";
  import express, { Request, Response, NextFunction } from "express";
-import admin from "firebase-admin";
+// Import the necessary Firebase Admin SDK modules
+import { initializeApp, cert, getApps, getApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
+
+// Import the service account key
+import serviceAccount from './me.json';
+
 import { setupVite, serveStatic, log } from "./vite";
 
 // Create Express app and HTTP server
@@ -14,17 +21,35 @@ app.use(express.urlencoded({ extended: true }));
 // Initialize Firebase Admin SDK
 // Check if Firebase has already been initialized to prevent errors in hot-reloading environments
 
-import serviceAccount from './me.json';
-import { ServiceAccount } from 'firebase-admin';
-
-if (!admin.apps.length) {
-    // Method 1: Using service account key file
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount as ServiceAccount),
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || 'couture-control.appspot.com'
-  });
-  console.log('Firebase Admin SDK initialized successfully with service account credentials.');
+// Type assertion for service account
+interface ServiceAccount {
+  type: string;
+  project_id: string;
+  private_key_id: string;
+  private_key: string;
+  client_email: string;
+  client_id: string;
+  auth_uri: string;
+  token_uri: string;
+  auth_provider_x509_cert_url: string;
+  client_x509_cert_url: string;
+  universe_domain: string;
 }
+
+// Initialize Firebase Admin if not already initialized
+const firebaseApp = getApps().length === 0 
+  ? initializeApp({
+      credential: cert({
+        projectId: serviceAccount.project_id,
+        clientEmail: serviceAccount.client_email,
+        privateKey: serviceAccount.private_key.replace(/\\\\n/g, '\\n')
+      }),
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || 'couture-control.appspot.com',
+      databaseURL: `https://${serviceAccount.project_id}.firebaseio.com`
+    } as any) // Using type assertion as a workaround for type issues
+  : getApp();
+
+console.log('Firebase Admin SDK initialized successfully with service account credentials.');
 /*
 // Method 2: Using environment variable with JSON string
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY || '{}');
@@ -38,16 +63,12 @@ if (Object.keys(serviceAccount).length > 0) {
 */
 
 // Import and setup routes AFTER creating the app
-import { FirestoreStorage, FirebaseFileStorage } from "./storage";
+import { storageService } from "./storage";
 import appRoutes from "./routes";
 
-const firestore = admin.firestore();
-const storage = admin.storage();
-
-const firestoreStorage = new FirestoreStorage(firestore, storage, process.env.FIREBASE_STORAGE_BUCKET || 'couture-control.appspot.com');
-const firebaseFileStorage = new FirebaseFileStorage(storage, process.env.FIREBASE_STORAGE_BUCKET || 'couture-control.appspot.com');
-
-app.use('/', appRoutes(firestoreStorage, firebaseFileStorage));
+// Initialize Firestore and Storage with the initialized app
+// Setup routes with the unified storage service
+app.use('/', appRoutes(storageService, storageService));
 
 // Logging middleware
 app.use((req: Request, res: Response, next: NextFunction) => {

@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Minus, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/context/CartContext";
+import { getProductImageUrl, getProductBrand } from "@/utils/productUtils";
 
 export default function CartModal() {
   const { items, isOpen, setIsOpen, updateQuantity, removeItem, total, clearCart } = useCart();
@@ -61,14 +62,14 @@ export default function CartModal() {
                         exit={{ opacity: 0, y: -20 }}
                       >
                         <img 
-                          src={item.product.images[0] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?ixlib=rb-4.0.3&auto=format&fit=crop&w=100&h=100"} 
+                          src={getProductImageUrl(item.product)} 
                           alt={item.product.name}
                           className="w-16 h-16 object-cover rounded-lg" 
                         />
                         <div className="flex-1">
                           <h4 className="font-semibold">{item.product.name}</h4>
-                          <p className="text-gray-400 text-sm">{item.product.brand}</p>
-                          <p className="text-matte-gold font-semibold">${item.product.price}</p>
+                          <p className="text-gray-400 text-sm">{getProductBrand(item.product)}</p>
+                          <p className="text-matte-gold font-semibold">${item.product.price.toFixed(2)}</p>
                         </div>
                         <div className="flex flex-col items-end space-y-2">
                           <div className="flex items-center space-x-2">

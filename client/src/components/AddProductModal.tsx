@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { addProduct } from "../services/product";
 import { uploadImages } from "../hooks/useUploadImages";
 import { useToast } from "@/components/ui/use-toast";
+import { Loader2 } from "lucide-react";
 
 interface Props {
   isOpen: boolean;
@@ -35,19 +36,22 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose }) => {
   // images
   const [uploadMode, setUploadMode] = useState<UploadMode>("browser");
   const [files, setFiles] = useState<File[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const urlRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addMutation = useMutation({
     mutationFn: addProduct,
     onSuccess: () => {
-      toast({ title: "Product added" });
+      toast({ title: "Product added successfully" });
       queryClient.invalidateQueries({ queryKey: ["products"] });
       reset();
       onClose();
     },
     onError: (error: any) => {
       toast({
-        title: "Error",
+        title: "Error adding product",
         description: error.message,
         variant: "destructive",
       });
@@ -55,9 +59,22 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose }) => {
   });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setFiles(Array.from(e.target.files));
+    if (e.target.files && e.target.files.length > 0) {
+      const selectedFiles = Array.from(e.target.files);
+      setFiles(selectedFiles);
+      
+      // Create preview URLs for selected images
+      const newPreviewUrls = selectedFiles.map(file => URL.createObjectURL(file));
+      setPreviewUrls(newPreviewUrls);
     }
+  };
+
+  const removeFile = (index: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+    
+    // Revoke the object URL to avoid memory leaks
+    URL.revokeObjectURL(previewUrls[index]);
+    setPreviewUrls(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -66,13 +83,18 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose }) => {
     try {
       let imageUrls: string[] = [];
 
-      if (uploadMode === "browser") {
-        imageUrls = await uploadImages(files);
-      } else if (uploadMode === "url") {
-        imageUrls = urlRef.current?.value
+      if (uploadMode === "browser" && files.length > 0) {
+        setUploadingImages(true);
+        try {
+          imageUrls = await uploadImages(files);
+        } finally {
+          setUploadingImages(false);
+        }
+      } else if (uploadMode === "url" && urlRef.current?.value) {
+        imageUrls = urlRef.current.value
           .split(/\n|,/)
           .map((u) => u.trim())
-          .filter(Boolean) || [];
+          .filter(Boolean);
       }
 
       const productData = {
@@ -91,7 +113,11 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose }) => {
       console.log('Submitting product:', productData);
       await addMutation.mutateAsync(productData);
     } catch (err: any) {
-      toast({ title: "Failed", description: err.message, variant: "destructive" });
+      toast({ 
+        title: "Failed to add product", 
+        description: err.message, 
+        variant: "destructive" 
+      });
     }
   };
 
@@ -106,7 +132,13 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose }) => {
     setFeatured(false);
     setActive(true);
     setFiles([]);
+    
+    // Clean up preview URLs
+    previewUrls.forEach(url => URL.revokeObjectURL(url));
+    setPreviewUrls([]);
+    
     if (urlRef.current) urlRef.current.value = "";
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   return (
@@ -127,12 +159,17 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose }) => {
               onChange={(e) => setPrice(e.target.value)}
               required
             />
-            <Input placeholder="Category" value={category} onChange={(e) => setCategory(e.target.value)} />
-            <Input placeholder="Brand" value={brand} onChange={(e) => setBrand(e.target.value)} />
+            <Input placeholder="Category" value={category} onChange={(e) => setCategory(e.target.value)} required />
+            <Input placeholder="Brand" value={brand} onChange={(e) => setBrand(e.target.value)} required />
             <Input placeholder="Stock" type="number" value={stock} onChange={(e) => setStock(e.target.value)} />
             <Input placeholder="Tags (comma separated)" value={tags} onChange={(e) => setTags(e.target.value)} />
           </div>
-          <Textarea placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <Textarea 
+            placeholder="Description" 
+            value={description} 
+            onChange={(e) => setDescription(e.target.value)}
+            required
+          />
 
           {/* flags */}
           <div className="flex items-center gap-4">
@@ -161,14 +198,61 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose }) => {
           </div>
 
           {uploadMode === "browser" && (
-            <Input type="file" accept="image/*" multiple onChange={handleFileChange} />
+            <div className="space-y-4">
+              <Input 
+                type="file" 
+                accept="image/*" 
+                multiple 
+                onChange={handleFileChange}
+                ref={fileInputRef}
+              />
+              
+              {previewUrls.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {previewUrls.map((url, index) => (
+                    <div key={index} className="relative">
+                      <img 
+                        src={url} 
+                        alt={`Preview ${index + 1}`} 
+                        className="w-full h-24 object-cover rounded-md"
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        className="absolute top-1 right-1 h-6 w-6 p-0"
+                        onClick={() => removeFile(index)}
+                      >
+                        ×
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
+          
           {uploadMode === "url" && (
-            <Textarea ref={urlRef} placeholder="One URL per line or comma-separated" />
+            <Textarea 
+              ref={urlRef} 
+              placeholder="One URL per line or comma-separated"
+              className="min-h-[100px]"
+            />
           )}
 
-          <Button type="submit" disabled={addMutation.isPending} className="w-full">
-            {addMutation.isPending ? "Saving…" : "Add"}
+          <Button 
+            type="submit" 
+            disabled={addMutation.isPending || uploadingImages} 
+            className="w-full"
+          >
+            {(addMutation.isPending || uploadingImages) && (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            )}
+            {uploadingImages 
+              ? "Uploading images..." 
+              : addMutation.isPending 
+                ? "Adding product..." 
+                : "Add Product"}
           </Button>
         </form>
       </DialogContent>

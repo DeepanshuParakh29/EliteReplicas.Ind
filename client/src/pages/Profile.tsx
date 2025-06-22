@@ -40,15 +40,30 @@ export default function Profile() {
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user?.id) return;
+    
     setIsUpdating(true);
     try {
-      await userService.updateUser(user.firebaseUid, { name });
-      await userService.getUserByFirebaseUid(user.firebaseUid); // Re-fetch current user data to update context
+      const [firstName, ...lastNameParts] = name.split(' ');
+      const lastName = lastNameParts.join(' ');
+      
+      const updateData = {
+        firstName,
+        lastName,
+        fullName: name,
+        email: user.email,
+        role: user.role,
+        avatar: user.avatar
+      };
+      
+      await userService.updateUser(user.id, updateData);
+      // The AuthContext will automatically update the user data
       toast({
         title: "Profile Updated",
         description: "Your profile has been successfully updated.",
       });
     } catch (error: any) {
+      console.error("Profile update error:", error);
       toast({
         title: "Update Failed",
         description: error.message || "Failed to update profile.",
@@ -73,11 +88,15 @@ export default function Profile() {
               <Avatar className="w-24 h-24 border-4 border-matte-gold">
                 <AvatarImage src={user.avatar || ""} alt={user.name} />
                 <AvatarFallback className="bg-matte-gold text-rich-black text-2xl font-bold">
-                  {user.name.charAt(0).toUpperCase()}
+                  {user.firstName?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase() || 'U'}
                 </AvatarFallback>
               </Avatar>
               <div>
-                <h1 className="font-playfair text-3xl font-bold mb-2">{user.name}</h1>
+                <h1 className="font-playfair text-3xl font-bold mb-2">
+                  {user.firstName && user.lastName 
+                    ? `${user.firstName} ${user.lastName}`
+                    : user.email?.split('@')[0] || 'User'}
+                </h1>
                 <p className="text-matte-gold text-lg">{user.email}</p>
                 <p className="text-gray-400 capitalize">{user.role} Member</p>
               </div>
