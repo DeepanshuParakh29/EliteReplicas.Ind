@@ -17,17 +17,42 @@ import {
   type InsertCartItem,
 } from '@shared/schema';
 
-const serviceAccount = require('../../me.json');
+// Firebase configuration from environment variables
 // Destructure commonly used members from the firestore namespace
 const { getFirestore } = adminFirestore;
-const { FieldValue, Timestamp } = admin.firestore;
 
 if (getApps().length === 0) {
-  const appOptions: admin.AppOptions & { storageBucket: string } = {
-    credential: cert(serviceAccount),
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET!,
-  };
-  initializeApp(appOptions);
+  // Check if Firebase credentials are available
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET;
+
+  if (projectId && clientEmail && privateKey && storageBucket) {
+    const appOptions = {
+      credential: cert({
+        projectId,
+        clientEmail,
+        privateKey: privateKey.replace(/\\n/g, '\n')
+      }),
+      storageBucket,
+    };
+    initializeApp(appOptions);
+  } else {
+    console.warn('Firebase credentials not found. Some features may not work until credentials are configured.');
+    // Initialize app without credentials for development
+    try {
+      initializeApp({
+        credential: cert({
+          projectId: 'demo-project',
+          clientEmail: 'demo@demo.com',
+          privateKey: '-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC...\n-----END PRIVATE KEY-----\n'
+        })
+      });
+    } catch (error) {
+      console.warn('Could not initialize Firebase app:', error);
+    }
+  }
 }
 
 const db = getFirestore();

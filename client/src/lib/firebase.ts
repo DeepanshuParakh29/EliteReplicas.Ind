@@ -15,52 +15,61 @@ type FirebaseConfig = {
   measurementId?: string;
 };
 
-// Validate environment variables
-const getEnvVar = (key: string): string => {
-  const value = import.meta.env[key];
-  if (value === undefined) {
-    throw new Error(`Missing required environment variable: ${key}`);
-  }
-  return value as string;
-};
-
 // Get Firebase configuration from environment variables
-const getFirebaseConfig = (): FirebaseConfig => {
+const getFirebaseConfig = (): FirebaseConfig | null => {
   try {
+    // Check if Firebase environment variables are available
+    if (!import.meta.env.VITE_FIREBASE_API_KEY) {
+      console.warn('Firebase credentials not configured. Authentication features will be limited.');
+      return null;
+    }
+
     return {
-      apiKey: getEnvVar('VITE_FIREBASE_API_KEY'),
-      authDomain: getEnvVar('VITE_FIREBASE_AUTH_DOMAIN'),
-      projectId: getEnvVar('VITE_FIREBASE_PROJECT_ID'),
-      storageBucket: getEnvVar('VITE_FIREBASE_STORAGE_BUCKET'),
-      messagingSenderId: getEnvVar('VITE_FIREBASE_MESSAGING_SENDER_ID'),
-      appId: getEnvVar('VITE_FIREBASE_APP_ID'),
+      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      appId: import.meta.env.VITE_FIREBASE_APP_ID,
       measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
     };
   } catch (error) {
-    console.error('Failed to initialize Firebase:', error);
-    throw new Error('Firebase configuration is missing or invalid');
+    console.warn('Firebase configuration incomplete:', error);
+    return null;
   }
 };
 
 // Initialize Firebase
 const firebaseConfig = getFirebaseConfig();
 
-// Initialize Firebase app
-const app: FirebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+// Initialize Firebase app only if configuration is available
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let db: Firestore | null = null;
+let storage: FirebaseStorage | null = null;
 
-// Initialize Firebase services
-const auth: Auth = getAuth(app);
-const db: Firestore = getFirestore(app);
-const storage: FirebaseStorage = getStorage(app);
-const analytics = getAnalytics(app);
-
-// Log Firebase initialization (only in development)
-if (import.meta.env.DEV) {
-  console.log('Firebase initialized with config:', {
-    ...firebaseConfig,
-    apiKey: '***', // Don't log the full API key
-  });
+if (firebaseConfig) {
+  try {
+    app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+    auth = getAuth(app);
+    db = getFirestore(app);
+    storage = getStorage(app);
+    
+    // Initialize analytics only in browser environment
+    if (typeof window !== 'undefined' && app) {
+      try {
+        getAnalytics(app);
+      } catch (error) {
+        console.warn('Failed to initialize Firebase Analytics:', error);
+      }
+    }
+  } catch (error) {
+    console.warn('Firebase initialization failed:', error);
+  }
+} else {
+  console.warn('Firebase not initialized - using local authentication fallback');
 }
 
-export { auth, db, storage, analytics };
-export default app;
+// Export Firebase services (can be null if not configured)
+export { auth, db, storage, app };
+export type { FirebaseConfig };

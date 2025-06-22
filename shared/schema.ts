@@ -120,3 +120,8 @@ export interface IStorage {
     totalUsers: number;
   }>;
 }
+
+export interface IFileStorage {
+  uploadBuffer(destination: string, buffer: Buffer, contentType: string): Promise<string>;
+  deleteFile(filePath: string): Promise<void>;
+}
