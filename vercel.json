@@ -10,7 +10,7 @@
       "use": "@vercel/static"
     },
     {
-      "src": "client/**/*.@(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)",
+      "src": "client/**/*",
       "use": "@vercel/static"
     }
   ],
@@ -24,7 +24,19 @@
       "dest": "/client/src/assets/$1"
     },
     {
-      "src": "/(.*)",
+      "src": "^/static/(.*)",
+      "dest": "/client/static/$1"
+    },
+    {
+      "src": "^/assets/(.*)",
+      "dest": "/client/src/assets/$1"
+    },
+    {
+      "src": "^/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot))$",
+      "dest": "/client/$1"
+    },
+    {
+      "src": "^/(.*)",
       "dest": "/client/index.html"
     }
   ]
