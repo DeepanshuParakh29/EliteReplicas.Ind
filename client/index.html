@@ -7,8 +7,26 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-    <!-- This is a replit script which adds a banner on the top of the page when opened in development mode outside the replit environment -->
-    <script type="text/javascript" src="https://replit.com/public/js/replit-dev-banner.js"></script>
+    <script type="module">
+      // This helps with module resolution in production
+      window.__vite_is_modern_browser = true;
+      
+      // Dynamic script loading
+      const loadScript = (src, type = 'module') => {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.type = type;
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      };
+
+      // Load the main entry point
+      loadScript('/assets/main.js').catch(err => {
+        console.error('Failed to load main script:', err);
+      });
+    </script>
   </body>
 </html>

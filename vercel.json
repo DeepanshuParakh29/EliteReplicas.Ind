@@ -6,11 +6,7 @@
       "use": "@vercel/node"
     },
     {
-      "src": "client/index.html",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "client/**/*",
+      "src": "dist/public/**/*",
       "use": "@vercel/static"
     }
   ],
@@ -20,24 +16,12 @@
       "dest": "/dist/index.js"
     },
     {
-      "src": "/assets/(.*)",
-      "dest": "/client/src/assets/$1"
-    },
-    {
-      "src": "^/static/(.*)",
-      "dest": "/client/static/$1"
-    },
-    {
       "src": "^/assets/(.*)",
-      "dest": "/client/src/assets/$1"
-    },
-    {
-      "src": "^/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot))$",
-      "dest": "/client/$1"
+      "dest": "/dist/public/assets/$1"
     },
     {
       "src": "^/(.*)",
-      "dest": "/client/index.html"
+      "dest": "/dist/public/index.html"
     }
   ]
 }

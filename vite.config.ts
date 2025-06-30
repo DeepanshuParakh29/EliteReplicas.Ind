@@ -27,7 +27,11 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    manifest: true,
     rollupOptions: {
+      input: {
+        main: path.resolve(import.meta.dirname, "client/index.html")
+      },
       output: {
         entryFileNames: 'assets/[name].[hash].js',
         chunkFileNames: 'assets/[name].[hash].js',
