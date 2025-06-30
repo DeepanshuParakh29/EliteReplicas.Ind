@@ -16,11 +16,15 @@
       "dest": "/dist/index.js"
     },
     {
-      "src": "^/assets/(.*)",
+      "src": "/assets/(.*)",
       "dest": "/dist/public/assets/$1"
     },
     {
-      "src": "^/(.*)",
+      "src": "/.vite/manifest.json",
+      "dest": "/dist/public/.vite/manifest.json"
+    },
+    {
+      "src": "^/(.*)$",
       "dest": "/dist/public/index.html"
     }
   ]

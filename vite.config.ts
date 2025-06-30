@@ -29,13 +29,11 @@ export default defineConfig(({ mode }) => ({
     emptyOutDir: true,
     manifest: true,
     rollupOptions: {
-      input: {
-        main: path.resolve(import.meta.dirname, "client/index.html")
-      },
+      input: path.resolve(import.meta.dirname, "client/index.html"),
       output: {
-        entryFileNames: 'assets/[name].[hash].js',
-        chunkFileNames: 'assets/[name].[hash].js',
-        assetFileNames: 'assets/[name].[hash][extname]',
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
       },
     },
     sourcemap: true,

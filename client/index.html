@@ -11,22 +11,37 @@
       // This helps with module resolution in production
       window.__vite_is_modern_browser = true;
       
-      // Dynamic script loading
-      const loadScript = (src, type = 'module') => {
-        return new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.type = type;
-          script.src = src;
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
+      // Load the manifest to get hashed filenames
+      const loadManifest = async () => {
+        try {
+          const response = await fetch('/assets/manifest.json');
+          const manifest = await response.json();
+          
+          // Load the main entry point
+          const mainEntry = manifest['index.html'];
+          if (mainEntry && mainEntry.file) {
+            const script = document.createElement('script');
+            script.type = 'module';
+            script.src = `/assets/${mainEntry.file}`;
+            script.onerror = (e) => console.error('Failed to load main script:', e);
+            document.head.appendChild(script);
+            
+            // Load CSS if it exists
+            if (mainEntry.css && mainEntry.css.length > 0) {
+              mainEntry.css.forEach(href => {
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = `/assets/${href}`;
+                document.head.appendChild(link);
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Failed to load manifest:', err);
+        }
       };
-
-      // Load the main entry point
-      loadScript('/assets/main.js').catch(err => {
-        console.error('Failed to load main script:', err);
-      });
+      
+      loadManifest();
     </script>
   </body>
 </html>
