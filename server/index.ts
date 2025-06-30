@@ -1,5 +1,19 @@
-import { createServer } from "http";
- import express, { Request, Response, NextFunction } from "express";
+import dotenv from 'dotenv';
+import path from 'path';
+import { createServer } from 'http';
+import express, { Request, Response, NextFunction } from 'express';
+
+// Load environment variables from .env file in the root directory
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+
+// Debug log environment variables
+console.log('Environment variables loaded:', {
+  NODE_ENV: process.env.NODE_ENV,
+  PORT: process.env.PORT,
+  FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID ? '***' : 'MISSING',
+  FIREBASE_CLIENT_EMAIL: process.env.FIREBASE_CLIENT_EMAIL ? '***' : 'MISSING',
+  FIREBASE_PRIVATE_KEY: process.env.FIREBASE_PRIVATE_KEY ? '***' : 'MISSING',
+});
 // Import the necessary Firebase Admin SDK modules
 import { initializeApp, cert, getApps, getApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -11,7 +25,10 @@ import { setupVite, serveStatic, log } from "./vite";
 
 // Create Express app and HTTP server
 const app = express();
-const server = createServer(app);
+export default app;
+
+// Only create HTTP server when running standalone (not in Cloud Functions)
+const server = !process.env.K_SERVICE && !process.env.FUNCTIONS_EMULATOR ? createServer(app) : undefined;
 
 // Middleware to parse JSON and URL-encoded data
 app.use(express.json());
@@ -35,33 +52,25 @@ interface ServiceAccount {
   universe_domain: string;
 }
 
-// Initialize Firebase Admin if not already initialized (optional for development)
-let firebaseApp;
-try {
-  const projectId = process.env.FIREBASE_PROJECT_ID;
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+// Firebase Admin is now initialized in firebase-admin.ts
 
-  if (projectId && clientEmail && privateKey && getApps().length === 0) {
-    firebaseApp = initializeApp({
-      credential: cert({
-        projectId,
-        clientEmail,
-        privateKey: privateKey.replace(/\\n/g, '\n')
-      })
-    });
-  } else if (getApps().length > 0) {
-    firebaseApp = getApp();
-  }
-} catch (error) {
-  console.warn('Firebase initialization skipped:', error.message);
-}
-
-console.log('Firebase Admin SDK initialized successfully.');
-
-// Import and setup routes AFTER creating the app
-import { simpleStorage, simpleFileStorage } from "./simple-storage";
+// Import middleware and routes
+import { authenticate } from './middleware/auth';
+import { simpleStorage, simpleFileStorage } from "./simple-storage.js";
 import appRoutes from "./routes";
+
+// Apply authentication middleware to all API routes
+app.use('/api', (req, res, next) => {
+  // Skip auth for public routes
+  const publicRoutes = ['/api/products', '/api/products/:id'];
+  if (publicRoutes.some(route => {
+    const regex = new RegExp(`^${route.replace(/:[^/]+/g, '([^/]+)')}$`);
+    return regex.test(req.path);
+  })) {
+    return next();
+  }
+  return authenticate(req, res, next);
+});
 
 // Setup routes with the simple storage service
 app.use('/', appRoutes(simpleStorage, simpleFileStorage));
@@ -106,15 +115,16 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err); // Log the error instead of throwing it
 });
 
-// Server initialization
-(async () => {
+// Server initialization (only when running standalone, not in Cloud Functions)
+if (server) {
+  (async () => {
   try {
     console.log('Starting server initialization...');
     
     // Setup Vite in development or serve static files in production
     if (app.get("env") === "development") {
       console.log('Setting up Vite in development mode...');
-      await setupVite(app, server);
+      await setupVite(app, server!);
     } else {
       console.log('Setting up static file serving...');
       serveStatic(app);
@@ -122,7 +132,7 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 
     // Start the server
     const port = 5000;
-    server.on('error', (error: NodeJS.ErrnoException) => {
+    server!.on('error', (error: NodeJS.ErrnoException) => {
       if (error.syscall !== 'listen') {
         throw error;
       }
@@ -142,7 +152,7 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
       }
     });
 
-    server.listen(port, "0.0.0.0", () => {
+    server!.listen(port, "0.0.0.0", () => {
       console.log(`Server is running on http://localhost:${port}`);
       log(`serving on port ${port}`);
     });
@@ -150,4 +160,5 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     console.error('Failed to start server:', error);
     process.exit(1);
   }
-})();
+  })();
+}

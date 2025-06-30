@@ -37,7 +37,7 @@ import { Badge } from "@/components/ui/badge";
 type AdminAction = 'clearCache' | 'backupDatabase' | 'restartServer' | 'clearLogs' | 'migrateData';
 
 export default function Admin() {
-  const { user, signOut } = useAuth();
+  const { user: authUser, signOut } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
@@ -81,17 +81,43 @@ export default function Admin() {
     }
   };
 
+  const { firebaseUser } = useAuth();
+
   // Server status check
   const checkServerStatus = async () => {
     try {
-      const response = await fetch('/api/health');
-      const data = await response.json();
+      if (!firebaseUser) {
+        throw new Error('No authenticated user');
+      }
+      
+      const idToken = await firebaseUser.getIdToken();
+      
+      const response = await fetch('/api/health', {
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        const text = await response.text();
+        throw new Error(`Server responded with non-JSON: ${response.status} ${response.statusText}. Response: ${text.substring(0, 200)}...`);
+      }
+      
       setServerStatus({
         status: data.status === 'ok' ? 'online' : 'offline',
         lastChecked: new Date().toISOString(),
       });
       return data.status === 'ok';
     } catch (error) {
+      console.error('Error checking server status:', error);
       setServerStatus({
         status: 'offline',
         lastChecked: new Date().toISOString(),
@@ -102,7 +128,7 @@ export default function Admin() {
 
   // Perform admin action
   const performAdminAction = async (action: AdminAction) => {
-    if (!user) return;
+    if (!authUser) return;
     
     setIsActionLoading(prev => ({ ...prev, [action]: true }));
     
@@ -168,7 +194,7 @@ export default function Admin() {
   }, []);
 
   // Check if user has admin privileges
-  if (!user || (user.role !== "admin" && user.role !== "super_admin")) {
+  if (!authUser || (authUser.role !== "admin" && authUser.role !== "super_admin")) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-rich-black to-deep-charcoal pt-20 flex items-center justify-center">
         <div className="text-center">
@@ -182,22 +208,54 @@ export default function Admin() {
 
   const { data: stats } = useQuery<{ totalSales: number; totalOrders: number; totalProducts: number; totalUsers: number }>({
     queryKey: ["/api/admin/stats"],
-    queryFn: () => fetch("/api/admin/stats").then((res) => res.json()),
+    queryFn: async () => {
+      if (!firebaseUser) throw new Error('User not authenticated');
+      const token = await firebaseUser.getIdToken();
+      const res = await fetch('/api/admin/stats', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to fetch stats');
+      return res.json();
+    },
   });
 
   const { data: products } = useQuery<Product[]>({
     queryKey: ["/api/admin/products"],
-    queryFn: () => fetch("/api/admin/products").then((res) => res.json()),
+    queryFn: async () => {
+      if (!firebaseUser) throw new Error('User not authenticated');
+      const token = await firebaseUser.getIdToken();
+      const res = await fetch('/api/admin/products', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to fetch products');
+      return res.json();
+    },
   });
 
   const { data: orders } = useQuery<Order[]>({
     queryKey: ["/api/admin/orders"],
-    queryFn: () => fetch("/api/admin/orders").then((res) => res.json()),
+    queryFn: async () => {
+      if (!firebaseUser) throw new Error('User not authenticated');
+      const token = await firebaseUser.getIdToken();
+      const res = await fetch('/api/admin/orders', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to fetch orders');
+      return res.json();
+    },
   });
 
   const { data: users } = useQuery<User[]>({
     queryKey: ["/api/admin/users"],
-    queryFn: () => fetch("/api/admin/users").then((res) => res.json()),
+    queryFn: async () => {
+      if (!firebaseUser) throw new Error('User not authenticated');
+      const token = await firebaseUser.getIdToken();
+      const res = await fetch('/api/admin/users', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to fetch users');
+      return res.json();
+    },
   });
 
   return (
@@ -218,7 +276,7 @@ export default function Admin() {
             </div>
             <div className="flex items-center space-x-3">
               <Crown className="w-8 h-8 text-matte-gold" />
-              <span className="text-matte-gold font-semibold capitalize">{user.role}</span>
+              <span className="text-matte-gold font-semibold capitalize">{authUser.role}</span>
             </div>
           </div>
 
@@ -288,7 +346,7 @@ export default function Admin() {
                 <Users className="w-4 h-4 mr-2" />
                 Users
               </TabsTrigger>
-              {user.role === "super_admin" && (
+              {authUser.role === "super_admin" && (
                 <TabsTrigger value="settings" className="data-[state=active]:bg-matte-gold data-[state=active]:text-rich-black">
                   <Settings className="w-4 h-4 mr-2" />
                   Settings
@@ -441,7 +499,7 @@ export default function Admin() {
 
 
 
-            {user.role === "super_admin" && (
+            {authUser?.role === "super_admin" && (
               <TabsContent value="settings" className="space-y-6">
                 <div className="flex justify-between items-center">
                   <div>

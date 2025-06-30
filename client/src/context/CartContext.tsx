@@ -4,9 +4,14 @@ import { useAuth } from "./AuthContext";
 //import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useToast } from "@/hooks/use-toast";
 
-interface CartItem {
-  product: Product;
+export interface CartItem {
+  id: string;
+  name: string;
+  price: number | string;
   quantity: number;
+  image: string;
+  // Include any other properties that might be needed
+  [key: string]: any;
 }
 
 interface CartContextType {
@@ -74,18 +79,37 @@ export const CartProvider = ({ children }: CartProviderProps) => {
 
   const addItem = (product: Product, quantity = 1) => {
     try {
-      setItems(currentItems => {
-        const existingItem = currentItems.find(item => item.product.id === product.id);
+      setItems((currentItems: CartItem[]) => {
+        const existingItem = currentItems.find(item => item.id === product.id);
         
         if (existingItem) {
           return currentItems.map(item =>
-            item.product.id === product.id
-              ? { ...item, quantity: item.quantity + quantity }
+            item.id === product.id
+              ? { 
+                  ...item, 
+                  quantity: (item.quantity || 0) + quantity,
+                  price: product.price,
+                  name: product.name,
+                  image: product.images?.[0] ? 
+                    (typeof product.images[0] === 'string' ? product.images[0] : product.images[0].url) : 
+                    ''
+                }
               : item
           );
         }
         
-        return [...currentItems, { product, quantity }];
+        // Ensure image is always a string by getting the URL from the ProductImage object if needed
+        const imageUrl = product.images?.[0] ? 
+          (typeof product.images[0] === 'string' ? product.images[0] : product.images[0].url) : 
+          '';
+          
+        return [...currentItems, { 
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          quantity,
+          image: imageUrl
+        }];
       });
       toast({
         title: "Item Added",
@@ -103,7 +127,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
 
   const removeItem = (productId: string) => {
     try {
-      setItems(currentItems => currentItems.filter(item => item.product.id !== productId));
+      setItems((currentItems: CartItem[]) => currentItems.filter(item => item.id !== productId));
       toast({
         title: "Item Removed",
         description: "Item removed from cart.",
@@ -111,7 +135,7 @@ export const CartProvider = ({ children }: CartProviderProps) => {
     } catch (error: any) {
       console.error("Error removing item from cart:", error);
       toast({
-        title: "Cart Error",
+        title: "Error",
         description: error.message || "Failed to remove item from cart.",
         variant: "destructive",
       });
@@ -119,28 +143,21 @@ export const CartProvider = ({ children }: CartProviderProps) => {
   };
 
   const updateQuantity = (productId: string, quantity: number) => {
+    if (quantity <= 0) {
+      removeItem(productId);
+      return;
+    }
+
     try {
-      if (quantity <= 0) {
-        removeItem(productId);
-        return;
-      }
-      
-      setItems(currentItems =>
+      setItems((currentItems: CartItem[]) =>
         currentItems.map(item =>
-          item.product.id === productId
-            ? { ...item, quantity: Math.max(1, quantity) } // Ensure quantity is at least 1
-            : item
+          item.id === productId ? { ...item, quantity } : item
         )
       );
-      
-      toast({
-        title: "Quantity Updated",
-        description: "Item quantity updated.",
-      });
     } catch (error: any) {
       console.error("Error updating item quantity:", error);
       toast({
-        title: "Cart Error",
+        title: "Error",
         description: error.message || "Failed to update item quantity.",
         variant: "destructive",
       });
@@ -148,27 +165,22 @@ export const CartProvider = ({ children }: CartProviderProps) => {
   };
 
   const clearCart = () => {
-    try {
-      setItems([]);
-      toast({
-        title: "Cart Cleared",
-        description: "All items removed from cart.",
-      });
-    } catch (error: any) {
-      console.error("Error clearing cart:", error);
-      toast({
-        title: "Cart Error",
-        description: error.message || "Failed to clear cart.",
-        variant: "destructive",
-      });
-    }
+    setItems([]);
+    localStorage.removeItem("cart");
+    toast({
+      title: "Cart Cleared",
+      description: "Your cart has been cleared.",
+    });
   };
 
-  const total = items.reduce((sum, item) => {
-    const price = typeof item.product.price === 'number' ? item.product.price : 0;
-    return sum + (price * item.quantity);
-  }, 0);
-  const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+  const total = items.reduce(
+    (sum: number, item: CartItem) => {
+      const price = typeof item.price === 'string' ? parseFloat(item.price) : (item.price || 0);
+      return sum + price * (item.quantity || 0);
+    },
+    0
+  );
+  const itemCount = items.reduce((sum: number, item: CartItem) => sum + (item.quantity || 0), 0);
 
   return (
     <CartContext.Provider value={{

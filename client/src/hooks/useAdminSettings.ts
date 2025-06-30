@@ -29,25 +29,51 @@ export const useAdminSettings = () => {
 
   // Fetch settings from API
   const fetchSettings = useCallback(async () => {
-    if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+    if (!user || (user.role !== 'admin' && user.role !== 'super_admin') || !firebaseUser) {
       setLoading(false);
       return;
     }
 
     try {
       setLoading(true);
-      const response = await fetch('/api/admin/settings');
-      if (!response.ok) {
-        throw new Error('Failed to fetch settings');
+      // Get the ID token for authentication
+      const idToken = await firebaseUser.getIdToken();
+      
+      const response = await fetch('/api/admin/settings', {
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include' // Include cookies if using session-based auth
+      });
+      
+      const data = await response.json().catch(() => ({
+        success: false,
+        error: 'Invalid response from server'
+      }));
+      
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to fetch settings');
       }
-      const data = await response.json();
-      setSettings(data.data || data);
+      
+      // Ensure we have valid settings data
+      const settingsData = data.data || data;
+      if (!settingsData) {
+        throw new Error('No settings data received');
+      }
+      
+      // Convert string dates back to Date objects if needed
+      if (settingsData.lastUpdated && typeof settingsData.lastUpdated === 'string') {
+        settingsData.lastUpdated = new Date(settingsData.lastUpdated);
+      }
+      
+      setSettings(settingsData);
       setError(null);
     } catch (err) {
       const error = err as Error;
       console.error('Error fetching admin settings:', error);
-      setError('Failed to load admin settings');
-      toast.error(error.message || 'Failed to load settings');
+      setError(error.message);
+      toast.error(`Failed to load settings: ${error.message}`);
     } finally {
       setLoading(false);
     }

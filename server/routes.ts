@@ -1,10 +1,15 @@
 import { IStorage, IFileStorage } from "@shared/schema";
 import { insertUserSchema, insertProductSchema, insertOrderSchema } from "@shared/schema";
 import express, { Request, Response } from 'express';
+import { db } from './lib/firebase-admin';
+import { getAuth } from 'firebase-admin/auth';
+import { Auth } from 'firebase-admin/auth';
+import { UserRecord } from 'firebase-admin/auth';
 import multer from 'multer';
 import { z } from 'zod';
 // @ts-ignore - node-fetch lacks built-in TS types for ESM default import
 import fetch from 'node-fetch';
+import { authenticate, authorize } from './middleware/auth';
 
 // Polyfill global fetch for Node versions that do not have it natively
 if (!(globalThis as any).fetch) {
@@ -38,12 +43,21 @@ app.post("/api/users", async (req, res) => {
   try {
     const userData = insertUserSchema.parse(req.body);
     const user = await storage.createUser(userData);
+
+    // Set custom claims for the user's role in Firebase
+    if (userData.firebaseUid && userData.role) {
+      const auth = getAuth() as Auth;
+      await auth.setCustomUserClaims(userData.firebaseUid, { role: userData.role });
+      console.log(`Custom claim 'role: ${userData.role}' set for user ${userData.firebaseUid}`);
+    }
+
     res.json(user);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: "Invalid user data", errors: error.errors });
     }
-    res.status(500).json({ message: "Failed to create user" });
+    console.error("Error creating user or setting custom claims:", error);
+    res.status(500).json({ message: "Failed to create user or set custom claims" });
   }
 });
 
@@ -199,6 +213,43 @@ app.get("/api/orders/user/:userId", async (req, res) => {
   }
 });
 
+// Admin routes
+app.get("/api/admin/settings", authenticate, authorize(['admin', 'super_admin']), async (req, res) => {
+  try {
+    // Placeholder for fetching admin settings logic
+    // For now, return a dummy response
+    res.json({ 
+      siteName: "Elite Replicas Admin",
+      adminEmail: "elitereplicas.in@gmail.com",
+      contactPhone: "+91 9179780699",
+      address: "Usha Estates"
+    });
+  } catch (error) {
+    console.error("Error fetching admin settings:", error);
+    res.status(500).json({ message: "Failed to fetch admin settings", details: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get("/api/admin/users", authenticate, authorize(['admin', 'super_admin']), async (req, res) => {
+  try {
+    const auth = getAuth() as Auth;
+    const listUsersResult = await auth.listUsers(); // Fetch users with default pagination
+    const users = listUsersResult.users.map((userRecord: UserRecord) => ({
+      uid: userRecord.uid,
+      email: userRecord.email,
+      displayName: userRecord.displayName,
+      photoURL: userRecord.photoURL,
+      disabled: userRecord.disabled,
+      role: userRecord.customClaims?.role || 'user', // Get custom role
+      metadata: userRecord.metadata,
+    }));
+    res.json(users);
+  } catch (error) {
+    console.error("Error fetching admin users:", error);
+    res.status(500).json({ message: "Failed to fetch admin users", details: error instanceof Error ? error.message : String(error) });
+  }
+});
+
 app.put("/api/orders/:id/status", async (req, res) => {
   try {
     const id = req.params.id;
@@ -281,6 +332,66 @@ app.delete("/api/cart/user/:userId", async (req, res) => {
 });
 
 // Admin routes
+// Admin - Settings
+
+app.get('/api/admin/settings', async (req: Request, res: Response) => {
+  try {
+    // @ts-ignore
+    const role = (req as any).user?.role;
+    if (role !== 'admin' && role !== 'super_admin') {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    const docRef = db.collection('admin').doc('settings');
+    const docSnap = await docRef.get();
+    if (!docSnap.exists) {
+      // create default settings if none
+      const defaultSettings = { maintenanceMode: false, userRegistration: true, lastUpdated: new Date().toISOString() };
+      await docRef.set(defaultSettings);
+      return res.json({ success: true, data: defaultSettings });
+    }
+    res.json({ success: true, data: docSnap.data() });
+  } catch (error) {
+    console.error('Fetch admin settings error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch settings' });
+  }
+});
+
+app.post('/api/admin/settings', async (req: Request, res: Response) => {
+  try {
+    // @ts-ignore
+    const role = (req as any).user?.role;
+    if (role !== 'admin' && role !== 'super_admin') {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    const updates = req.body || {};
+    updates.lastUpdated = new Date().toISOString();
+    const docRef = db.collection('admin').doc('settings');
+    await docRef.set(updates, { merge: true });
+    const updated = (await docRef.get()).data();
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Update admin settings error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update settings' });
+  }
+});
+
+app.delete('/api/admin/settings', async (req: Request, res: Response) => {
+  try {
+    // @ts-ignore
+    const role = (req as any).user?.role;
+    if (role !== 'admin' && role !== 'super_admin') {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    const defaultSettings = { maintenanceMode: false, userRegistration: true, lastUpdated: new Date().toISOString() };
+    const docRef = db.collection('admin').doc('settings');
+    await docRef.set(defaultSettings);
+    res.json({ success: true, data: defaultSettings });
+  } catch (error) {
+    console.error('Clear admin settings error:', error);
+    res.status(500).json({ success: false, message: 'Failed to clear settings' });
+  }
+});
+
 // Admin - Products
 app.get("/api/admin/products", async (_req: Request, res: Response) => {
   try {

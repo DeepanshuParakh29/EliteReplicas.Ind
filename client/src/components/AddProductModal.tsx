@@ -2,13 +2,14 @@ import React, { useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
-import { Checkbox } from "./ui/checkbox";
-import { Button } from "./ui/button";
+import { useAuth } from "@/context/AuthContext";
+import { useUploadImages } from "@/hooks/useUploadImages";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { addProduct } from "../services/product";
-import { uploadImages } from "../hooks/useUploadImages";
 import { useToast } from "@/components/ui/use-toast";
 import { Loader2 } from "lucide-react";
+import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 
 interface Props {
   isOpen: boolean;
@@ -21,6 +22,7 @@ type UploadMode = "browser" | "url" | "none";
 const AddProductModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user, firebaseUser } = useAuth();
 
   // product fields
   const [name, setName] = useState("");
@@ -35,14 +37,36 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
   // images
   const [uploadMode, setUploadMode] = useState<UploadMode>("browser");
+  const uploadHook = useUploadImages({ user: firebaseUser }); // Pass the firebaseUser to the hook
   const [files, setFiles] = useState<File[]>([]);
+  // State for tracking upload progress
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const urlRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addMutation = useMutation({
-    mutationFn: addProduct,
+    mutationFn: async (data: any) => {
+      if (!firebaseUser) throw new Error('User not authenticated');
+      const token: string = await firebaseUser.getIdToken();
+      
+      // Format the data properly
+      const productData = {
+        name: data.name,
+        price: parseFloat(data.price),
+        description: data.description,
+        category: data.category,
+        brand: data.brand,
+        stock: parseInt(data.stock) || 0,
+        tags: data.tags.split(',').map((t: string) => t.trim()).filter(Boolean),
+        featured: data.featured || false,
+        active: data.active !== false, // default to true
+        images: data.images || [],
+      };
+
+      return addProduct(productData, token);
+    },
     onSuccess: () => {
       toast({ title: "Product added successfully" });
       queryClient.invalidateQueries({ queryKey: ["products"] });
@@ -79,45 +103,80 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
+    
     try {
-      let imageUrls: string[] = [];
-
-      if (uploadMode === "browser" && files.length > 0) {
-        setUploadingImages(true);
+      setUploadingImages(true);
+      setUploadError(null);
+      
+      // Validate required fields
+      if (!name.trim()) {
+        throw new Error('Product name is required');
+      }
+      if (!description.trim()) {
+        throw new Error('Product description is required');
+      }
+      if (!category.trim()) {
+        throw new Error('Category is required');
+      }
+      if (!brand.trim()) {
+        throw new Error('Brand is required');
+      }
+      if (isNaN(parseFloat(price)) || parseFloat(price) <= 0) {
+        throw new Error('Please enter a valid price');
+      }
+      
+      let imageUrlsToUse = [...previewUrls];
+      
+      // Upload new images if any
+      if (files.length > 0) {
         try {
-          imageUrls = await uploadImages(files);
+          const uploadedUrls = await uploadHook.uploadImages(files);
+          imageUrlsToUse = [...imageUrlsToUse, ...uploadedUrls];
+        } catch (error) {
+          console.error('Error uploading images:', error);
+          toast({
+            title: 'Error uploading images',
+            description: error instanceof Error ? error.message : 'Failed to upload images',
+            variant: 'destructive',
+          });
+          return;
         } finally {
           setUploadingImages(false);
         }
-      } else if (uploadMode === "url" && urlRef.current?.value) {
-        imageUrls = urlRef.current.value
-          .split(/\n|,/)
-          .map((u) => u.trim())
-          .filter(Boolean);
       }
 
+      // Prepare product data
       const productData = {
         name,
-        price: parseFloat(price || "0"),
+        price: parseFloat(price),
         description,
         category,
         brand,
-        stock: parseInt(stock || "0", 10),
-        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+        stock: parseInt(stock) || 0,
+        tags: tags.split(',').map(tag => tag.trim()).filter(Boolean),
         featured,
-        active,
-        images: imageUrls,
+        active: true,
+        images: imageUrlsToUse,
       };
       
       console.log('Submitting product:', productData);
+      
+      // Submit the product data
       await addMutation.mutateAsync(productData);
     } catch (err: any) {
-      toast({ 
-        title: "Failed to add product", 
-        description: err.message, 
-        variant: "destructive" 
-      });
+      console.error('Error in handleSubmit:', err);
+      const errorMessage = err.message || 'Failed to add product';
+      
+      // Only show toast if we don't have a more specific upload error
+      if (!uploadError) {
+        toast({ 
+          title: "Error", 
+          description: errorMessage, 
+          variant: "destructive" 
+        });
+      }
+    } finally {
+      setUploadingImages(false);
     }
   };
 
@@ -243,16 +302,14 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose }) => {
           <Button 
             type="submit" 
             disabled={addMutation.isPending || uploadingImages} 
-            className="w-full"
+            className="w-full flex items-center justify-center gap-2"
           >
-            {(addMutation.isPending || uploadingImages) && (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            )}
-            {uploadingImages 
-              ? "Uploading images..." 
-              : addMutation.isPending 
-                ? "Adding product..." 
-                : "Add Product"}
+            {addMutation.isPending || uploadingImages ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>{uploadingImages ? 'Uploading images...' : 'Saving product...'}</span>
+              </>
+            ) : 'Add Product'}
           </Button>
         </form>
       </DialogContent>

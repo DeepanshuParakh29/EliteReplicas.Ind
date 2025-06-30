@@ -1,28 +1,57 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { getFirebaseAdmin } from '@/lib/firebase-admin';
+import { getFirebaseAdmin, adminDb } from '@/lib/firebase-admin';
+import Cors from 'cors';
+
+// Initialize CORS middleware
+const cors = Cors({
+  origin: true, // Allow all origins
+  methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+});
+
+// Helper method to wait for a middleware to execute before continuing
+function runMiddleware(req: NextApiRequest, res: NextApiResponse, fn: Function) {
+  return new Promise((resolve, reject) => {
+    fn(req, res, (result: any) => {
+      if (result instanceof Error) {
+        return reject(result);
+      }
+      return resolve(result);
+    });
+  });
+}
+
+// Extend the base type to include Firestore Timestamp methods
+interface FirestoreTimestamp {
+  toDate: () => Date;
+  toMillis: () => number;
+  isEqual: (other: any) => boolean;
+  valueOf: () => string;
+}
 
 type AdminSettings = {
   maintenanceMode: boolean;
   userRegistration: boolean;
-  lastUpdated?: FirebaseFirestore.Timestamp | Date;
+  lastUpdated?: string | Date | FirestoreTimestamp;
   updatedBy?: string;
 };
 
 const ADMIN_SETTINGS_DOC = 'settings/admin';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  // Run CORS middleware
+  await runMiddleware(req, res, cors);
+
+  // Set content type to JSON
+  res.setHeader('Content-Type', 'application/json');
 
   // Handle OPTIONS method for CORS preflight
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
+  // Check for authorization header
   const authHeader = req.headers.authorization;
-  
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ 
       success: false,
@@ -57,62 +86,171 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const docSnap = await docRef.get();
         
         if (docSnap.exists) {
+          const data = docSnap.data() as AdminSettings | undefined;
+          
+          // Ensure we have valid data
+          if (!data) {
+            return res.status(200).json({
+              success: true,
+              data: {
+                maintenanceMode: false,
+                userRegistration: true,
+                lastUpdated: new Date().toISOString()
+              }
+            });
+          }
+          
+          // Convert lastUpdated to ISO string if it's a Date or Firestore Timestamp
+          let lastUpdated: string;
+          if (data.lastUpdated) {
+            if (typeof data.lastUpdated === 'string') {
+              lastUpdated = data.lastUpdated;
+            } else if ('toDate' in data.lastUpdated) {
+              // Handle Firestore Timestamp
+              lastUpdated = data.lastUpdated.toDate().toISOString();
+            } else if (data.lastUpdated instanceof Date) {
+              lastUpdated = data.lastUpdated.toISOString();
+            } else {
+              lastUpdated = new Date().toISOString();
+            }
+          } else {
+            lastUpdated = new Date().toISOString();
+          }
+          
+          const responseData: AdminSettings = {
+            maintenanceMode: data.maintenanceMode ?? false,
+            userRegistration: data.userRegistration ?? true,
+            lastUpdated,
+            updatedBy: data.updatedBy
+          };
+          
           return res.status(200).json({
             success: true,
-            data: docSnap.data()
+            data: responseData
           });
         } else {
           // Initialize with default settings if not exists
+          const now = new Date();
           const defaultSettings: AdminSettings = {
             maintenanceMode: false,
             userRegistration: true,
-            lastUpdated: new Date(),
+            lastUpdated: now,
             updatedBy: decodedToken.uid,
           };
           
-          await docRef.set(defaultSettings);
+          // Store the document with the current timestamp
+          const updateData = {
+            ...defaultSettings,
+            lastUpdated: now
+          };
+          
+          await docRef.set(updateData);
+          
+          // Create a properly typed response object with ISO string for lastUpdated
+          const responseData = {
+            ...updateData,
+            lastUpdated: now.toISOString()
+          };
           
           return res.status(200).json({
             success: true,
-            data: defaultSettings
+            data: responseData
           });
         }
       } catch (error) {
         console.error('Error fetching settings:', error);
-        throw new Error('Failed to fetch settings');
+        return res.status(500).json({
+          success: false,
+          error: 'Internal server error while fetching settings'
+        });
       }
     }
 
-    // POST/PUT: Update settings
-    if (req.method === 'POST' || req.method === 'PUT') {
-      const { maintenanceMode, userRegistration } = req.body;
-      
-      // Validate request body
-      if (typeof maintenanceMode !== 'boolean' || typeof userRegistration !== 'boolean') {
-        return res.status(400).json({ 
-          success: false,
-          error: 'Invalid request body - maintenanceMode and userRegistration must be booleans' 
-        });
-      }
-
+    // POST: Update settings
+    if (req.method === 'POST') {
       try {
-        const updates: Partial<AdminSettings> = {
+        const { maintenanceMode, userRegistration } = req.body;
+
+        // Validate request body
+        if (typeof maintenanceMode !== 'boolean' || typeof userRegistration !== 'boolean') {
+          return res.status(400).json({
+            success: false,
+            error: 'Invalid request body. maintenanceMode and userRegistration are required and must be booleans.'
+          });
+        }
+
+        const now = new Date();
+        const updateData: Partial<AdminSettings> = {
           maintenanceMode,
           userRegistration,
-          lastUpdated: new Date(),
-          updatedBy: decodedToken.uid,
+          lastUpdated: now,
+          updatedBy: decodedToken.uid
         };
 
-        await docRef.set(updates, { merge: true });
-        
+        await docRef.set(updateData, { merge: true });
+
+        // Prepare the response with the same data we just set
+        const responseData: AdminSettings = {
+          maintenanceMode,
+          userRegistration,
+          lastUpdated: now.toISOString(),
+          updatedBy: decodedToken.uid
+        };
+
         return res.status(200).json({
           success: true,
-          message: 'Settings updated successfully',
-          data: updates
+          data: responseData
         });
       } catch (error) {
         console.error('Error updating settings:', error);
-        throw new Error('Failed to update settings');
+        return res.status(500).json({
+          success: false,
+          error: 'Internal server error while updating settings'
+        });
+      }
+    }
+
+    // PUT: Update settings (same as POST for this endpoint)
+    if (req.method === 'PUT') {
+      try {
+        const { maintenanceMode, userRegistration } = req.body;
+
+        // Validate request body
+        if (typeof maintenanceMode !== 'boolean' || typeof userRegistration !== 'boolean') {
+          return res.status(400).json({
+            success: false,
+            error: 'Invalid request body. maintenanceMode and userRegistration are required and must be booleans.'
+          });
+        }
+
+        const now = new Date();
+        const updateData: Partial<AdminSettings> = {
+          maintenanceMode,
+          userRegistration,
+          lastUpdated: now,
+          updatedBy: decodedToken.uid
+        };
+
+        await docRef.set(updateData, { merge: true });
+
+        // Prepare the response with the same data we just set
+        const responseData: AdminSettings = {
+          maintenanceMode,
+          userRegistration,
+          lastUpdated: now.toISOString(),
+          updatedBy: decodedToken.uid
+        };
+
+        return res.status(200).json({
+          success: true,
+          data: responseData
+        });
+      } catch (error) {
+        console.error('Error updating settings:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Internal server error while updating settings'
+        });
       }
     }
 

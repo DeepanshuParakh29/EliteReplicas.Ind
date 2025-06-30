@@ -106,9 +106,17 @@ export default function Navigation() {
                     {user.role === "admin" || user.role === "super_admin" ? (
                       <Link
                         href="/admin"
-                        className="text-sm text-cream-white/80 hover:text-matte-gold px-3 py-1 rounded-full"
+                        className="relative inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full transition-all duration-200 group"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(196, 160, 105, 0.15) 0%, rgba(196, 160, 105, 0.1) 100%)',
+                          border: '1px solid rgba(196, 160, 105, 0.2)'
+                        }}
                       >
-                        Admin Panel
+                        <Crown className="w-3.5 h-3.5 mr-1.5 text-matte-gold/80 group-hover:text-matte-gold" />
+                        <span className="text-matte-gold/90 group-hover:text-matte-gold">
+                          {user.role === 'super_admin' ? 'Super Admin' : 'Admin'}
+                        </span>
+                        <span className="absolute inset-0 rounded-full bg-matte-gold/0 group-hover:bg-matte-gold/5 transition-colors duration-200" />
                       </Link>
                     ) : null}
                     <Link
@@ -175,9 +183,10 @@ export default function Navigation() {
                         <Link
                           href="/admin"
                           onClick={closeMobileMenu}
-                          className="block text-lg font-medium text-cream-white/80 hover:text-matte-gold transition-colors duration-200"
+                          className="flex items-center text-lg font-medium text-matte-gold/90 hover:text-matte-gold transition-colors duration-200 py-2 px-3 -mx-3 rounded-lg hover:bg-matte-gold/5"
                         >
-                          Admin Panel
+                          <Crown className="w-4 h-4 mr-2.5" />
+                          {user.role === 'super_admin' ? 'Super Admin Panel' : 'Admin Panel'}
                         </Link>
                       ) : null}
                       

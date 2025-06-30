@@ -1,15 +1,16 @@
 import React, { useRef, useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Checkbox } from "./ui/checkbox";
 import { Button } from "./ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { updateProduct, ProductInput } from "../services/product";
-import { uploadImages } from "../hooks/useUploadImages";
+import { useUploadImages } from "../hooks/useUploadImages";
 import { useToast } from "@/components/ui/use-toast";
 import { Loader2, X } from "lucide-react";
 import { Product, ProductImage } from "@/types";
+import { useAuth } from "@/context/AuthContext";
 
 interface Props {
   isOpen: boolean;
@@ -22,6 +23,8 @@ type UploadMode = "browser" | "url" | "none";
 const EditProductModal: React.FC<Props> = ({ isOpen, onClose, product }) => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { firebaseUser } = useAuth();
+  const { uploadImages } = useUploadImages({ user: firebaseUser });
 
   // product fields
   const [name, setName] = useState("");
@@ -80,8 +83,12 @@ const EditProductModal: React.FC<Props> = ({ isOpen, onClose, product }) => {
   }, [product]);
 
   const updateMutation = useMutation({
-    mutationFn: (data: ProductInput) => 
-      updateProduct(product?.id || "", data),
+    mutationFn: async (data: ProductInput) => {
+      if (!firebaseUser) throw new Error('User not authenticated');
+      const token = await firebaseUser.getIdToken();
+      if (!token) throw new Error('Failed to get authentication token');
+      return updateProduct(product.id, data, token);
+    },
     onSuccess: () => {
       toast({ title: "Product updated successfully" });
       queryClient.invalidateQueries({ queryKey: ["products"] });
@@ -128,8 +135,18 @@ const EditProductModal: React.FC<Props> = ({ isOpen, onClose, product }) => {
       // Upload new images if any
       if (files.length > 0) {
         setUploadingImages(true);
-        const uploadedUrls = await uploadImages(files);
-        imageUrlsToUse = [...imageUrls, ...uploadedUrls];
+        try {
+          const uploadedUrls = await uploadImages(files);
+          imageUrlsToUse = [...imageUrls, ...uploadedUrls];
+        } catch (error) {
+          console.error('Error uploading images:', error);
+          toast({
+            title: 'Error uploading images',
+            description: error instanceof Error ? error.message : 'Failed to upload images',
+            variant: 'destructive',
+          });
+          return;
+        }
       }
 
       const productData: ProductInput = {
@@ -160,6 +177,9 @@ const EditProductModal: React.FC<Props> = ({ isOpen, onClose, product }) => {
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Product</DialogTitle>
+          <DialogDescription>
+            Update the product details below. Click save when you're done.
+          </DialogDescription>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-6">

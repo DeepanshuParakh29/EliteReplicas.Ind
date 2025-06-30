@@ -1,12 +1,14 @@
 import { getApps, getApp, initializeApp, cert, App } from 'firebase-admin/app';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
 import { getAuth, Auth } from 'firebase-admin/auth';
+import { getStorage, Storage } from 'firebase-admin/storage';
 
 // Type definitions for our Firebase Admin instance
 export interface FirebaseAdmin {
   app: App;
   db: Firestore;
   auth: Auth;
+  storage: Storage;
 }
 
 // Check if all required environment variables are set
@@ -54,6 +56,7 @@ export function getFirebaseAdmin(): FirebaseAdmin {
     // Initialize services
     const db = getFirestore(app);
     const auth = getAuth(app);
+    const storage = getStorage(app);
 
     // Set Firestore settings
     if (process.env.NODE_ENV !== 'production') {
@@ -62,7 +65,12 @@ export function getFirebaseAdmin(): FirebaseAdmin {
       });
     }
 
-    firebaseAdmin = { app, db, auth };
+    firebaseAdmin = { 
+      app, 
+      db, 
+      auth, 
+      storage 
+    };
     return firebaseAdmin;
   } catch (error) {
     console.error('Firebase Admin initialization error:', error);
@@ -70,7 +78,11 @@ export function getFirebaseAdmin(): FirebaseAdmin {
   }
 }
 
-// Export initialized services
-export const { db: adminDb, auth: adminAuth } = getFirebaseAdmin();
+// Initialize and export services
+const admin = getFirebaseAdmin();
 
-export default getFirebaseAdmin;
+export const adminDb = admin.db;
+export const adminAuth = admin.auth;
+export const adminStorage = admin.storage;
+
+export default admin;

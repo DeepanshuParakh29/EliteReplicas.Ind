@@ -47,27 +47,35 @@ let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
 let storage: FirebaseStorage | null = null;
+let analytics: any = null;
 
 if (firebaseConfig) {
   try {
-    app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-    auth = getAuth(app);
-    db = getFirestore(app);
-    storage = getStorage(app);
+    // Initialize Firebase app if not already initialized
+    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     
-    // Initialize analytics only in browser environment
-    if (typeof window !== 'undefined' && app) {
-      try {
-        getAnalytics(app);
-      } catch (error) {
-        console.warn('Failed to initialize Firebase Analytics:', error);
+    if (app) {
+      // Initialize Firebase services
+      auth = getAuth(app);
+      db = getFirestore(app);
+      storage = getStorage(app);
+      
+      // Initialize analytics only in browser environment
+      if (typeof window !== 'undefined' && firebaseConfig.measurementId) {
+        try {
+          analytics = getAnalytics(app);
+        } catch (error) {
+          console.warn('Failed to initialize Firebase Analytics:', error);
+        }
       }
+      
+      console.log('Firebase initialized successfully');
     }
   } catch (error) {
-    console.warn('Firebase initialization failed:', error);
+    console.error('Firebase initialization error:', error);
   }
 } else {
-  console.warn('Firebase not initialized - using local authentication fallback');
+  console.warn('Firebase not initialized - missing configuration');
 }
 
 // Export Firebase services (can be null if not configured)

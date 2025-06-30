@@ -34,16 +34,23 @@ const validateProductData = (productData: ProductInput) => {
   };
 };
 
-export const addProduct = async (productData: ProductInput): Promise<Product> => {
+export const addProduct = async (productData: ProductInput, idToken?: string): Promise<Product> => {
   const dataToSend = validateProductData(productData);
   
   console.log("Sending product data to API:", dataToSend);
 
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  
+  // Add authorization header if token is provided
+  if (idToken) {
+    headers['Authorization'] = `Bearer ${idToken}`;
+  }
+
   const response = await fetch('/api/products', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(dataToSend),
   });
 
@@ -56,16 +63,23 @@ export const addProduct = async (productData: ProductInput): Promise<Product> =>
   return response.json();
 };
 
-export const updateProduct = async (id: string, productData: ProductInput): Promise<Product> => {
+export const updateProduct = async (id: string, productData: ProductInput, idToken?: string): Promise<Product> => {
   const dataToSend = validateProductData(productData);
   
   console.log(`Updating product ${id} with data:`, dataToSend);
+  
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  
+  // Add authorization header if token is provided
+  if (idToken) {
+    headers['Authorization'] = `Bearer ${idToken}`;
+  }
 
   const response = await fetch(`/api/products/${id}`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(dataToSend),
   });
 
@@ -78,9 +92,17 @@ export const updateProduct = async (id: string, productData: ProductInput): Prom
   return response.json();
 };
 
-export const deleteProduct = async (id: string): Promise<void> => {
+export const deleteProduct = async (id: string, idToken?: string): Promise<void> => {
+  const headers: HeadersInit = {};
+  
+  // Add authorization header if token is provided
+  if (idToken) {
+    headers['Authorization'] = `Bearer ${idToken}`;
+  }
+  
   const response = await fetch(`/api/products/${id}`, {
     method: 'DELETE',
+    headers,
   });
 
   if (!response.ok) {

@@ -124,4 +124,5 @@ export interface IStorage {
 export interface IFileStorage {
   uploadBuffer(destination: string, buffer: Buffer, contentType: string): Promise<string>;
   deleteFile(filePath: string): Promise<void>;
+  getSignedUrlForUpload(filename: string, contentType: string): Promise<{ signedUrl: string; filePath: string }>;
 }

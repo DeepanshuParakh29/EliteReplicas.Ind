@@ -20,6 +20,9 @@ type AuthResponse = {
 };
 
 export const signInWithEmail = async (email: string, password: string): Promise<AuthResponse> => {
+  if (!auth) {
+    return { success: false, error: 'Authentication service is not available' };
+  }
   try {
     const result = await signInWithEmailAndPassword(auth, email, password);
     return { success: true, user: result.user };
@@ -31,6 +34,9 @@ export const signInWithEmail = async (email: string, password: string): Promise<
 };
 
 export const signUpWithEmail = async (email: string, password: string): Promise<AuthResponse> => {
+  if (!auth) {
+    return { success: false, error: 'Authentication service is not available' };
+  }
   try {
     const result = await createUserWithEmailAndPassword(auth, email, password);
     return { success: true, user: result.user };
@@ -42,6 +48,9 @@ export const signUpWithEmail = async (email: string, password: string): Promise<
 };
 
 export const signInWithGoogle = async (usePopup = false): Promise<AuthResponse> => {
+  if (!auth) {
+    return { success: false, error: 'Authentication service is not available' };
+  }
   try {
     if (usePopup) {
       const result = await signInWithPopup(auth, googleProvider);
@@ -58,6 +67,9 @@ export const signInWithGoogle = async (usePopup = false): Promise<AuthResponse> 
 };
 
 export const handleRedirectResult = async (): Promise<AuthResponse> => {
+  if (!auth) {
+    return { success: false, error: 'Authentication service is not available' };
+  }
   try {
     const result = await getRedirectResult(auth);
     if (result && result.user) {
@@ -74,6 +86,9 @@ export const handleRedirectResult = async (): Promise<AuthResponse> => {
 };
 
 export const logOut = async (): Promise<AuthResponse> => {
+  if (!auth) {
+    return { success: false, error: 'Authentication service is not available' };
+  }
   try {
     await signOut(auth);
     return { success: true };
@@ -85,7 +100,7 @@ export const logOut = async (): Promise<AuthResponse> => {
 };
 
 export const getCurrentUser = (): FirebaseUser | null => {
-  return auth.currentUser;
+  return auth?.currentUser || null;
 };
 
 const getAuthErrorMessage = (errorCode: string): string => {

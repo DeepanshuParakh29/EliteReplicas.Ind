@@ -361,8 +361,8 @@ export default function Checkout() {
                     <div key={item.product.id} className="flex justify-between items-center">
                       <div className="flex items-center space-x-3">
                         <img
-                          src={item.product.images[0] || '/placeholder.jpg'}
-                          alt={item.product.name}
+                          src={item.product.images[0]?.url || '/placeholder.jpg'}
+                          alt={item.product.images[0]?.alt || item.product.name}
                           className="h-12 w-12 object-cover rounded"
                         />
                         <div>
@@ -370,7 +370,7 @@ export default function Checkout() {
                           <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
                         </div>
                       </div>
-                      <p className="font-medium">₹{(parseFloat(item.product.price) * item.quantity).toFixed(2)}</p>
+                      <p className="font-medium">₹{(item.product.price * item.quantity).toFixed(2)}</p>
                     </div>
                   ))}
                   
