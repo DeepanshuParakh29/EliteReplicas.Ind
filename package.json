@@ -5,7 +5,9 @@
   "license": "MIT",
   "scripts": {
     "dev": "cross-env NODE_ENV=development tsx server/index.ts",
-    "build": "vite build && cross-env NODE_ENV=production esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist --external:firebase-admin && copyfiles -u 1 server/lib/*.ts dist/lib/",
+    "build": "vite build && cross-env NODE_ENV=production esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist --external:firebase-admin && if not exist dist\\lib mkdir dist\\lib && copyfiles -u 1 server/lib/*.ts dist/lib/",
+    "build:client": "vite build",
+    "build:server": "cross-env NODE_ENV=production esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist --external:firebase-admin",
     "start": "cross-env NODE_ENV=production node dist/index.js",
     "start:prod": "pm2 start ecosystem.config.js --env production",
     "stop:prod": "pm2 delete ecosystem.config.js",
@@ -18,7 +20,8 @@
     "docker:down": "docker-compose -f docker-compose.prod.yml down",
     "docker:logs": "docker-compose -f docker-compose.prod.yml logs -f",
     "docker:restart": "docker-compose -f docker-compose.prod.yml restart",
-    "set-admin": "tsx scripts/setAdminRole.ts"
+    "set-admin": "tsx scripts/setAdminRole.ts",
+    "vercel-build": "npm run build:client && npm run build:server"
   },
   "engines": {
     "node": ">=18.0.0",
