@@ -85,6 +85,7 @@ const EditProductModal: React.FC<Props> = ({ isOpen, onClose, product }) => {
   const updateMutation = useMutation({
     mutationFn: async (data: ProductInput) => {
       if (!firebaseUser) throw new Error('User not authenticated');
+      if (!product) throw new Error('No product selected for update');
       const token = await firebaseUser.getIdToken();
       if (!token) throw new Error('Failed to get authentication token');
       return updateProduct(product.id, data, token);

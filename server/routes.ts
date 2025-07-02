@@ -2,8 +2,7 @@ import { IStorage, IFileStorage } from "@shared/schema";
 import { insertUserSchema, insertProductSchema, insertOrderSchema } from "@shared/schema";
 import express, { Request, Response } from 'express';
 import { db } from './lib/firebase-admin';
-import { getAuth } from 'firebase-admin/auth';
-import { Auth } from 'firebase-admin/auth';
+import { getAuth, Auth } from 'firebase-admin/auth';
 import { UserRecord } from 'firebase-admin/auth';
 import multer from 'multer';
 import { z } from 'zod';
@@ -46,7 +45,7 @@ app.post("/api/users", async (req, res) => {
 
     // Set custom claims for the user's role in Firebase
     if (userData.firebaseUid && userData.role) {
-      const auth = getAuth() as Auth;
+      const auth = getAuth();
       await auth.setCustomUserClaims(userData.firebaseUid, { role: userData.role });
       console.log(`Custom claim 'role: ${userData.role}' set for user ${userData.firebaseUid}`);
     }
@@ -232,7 +231,7 @@ app.get("/api/admin/settings", authenticate, authorize(['admin', 'super_admin'])
 
 app.get("/api/admin/users", authenticate, authorize(['admin', 'super_admin']), async (req, res) => {
   try {
-    const auth = getAuth() as Auth;
+    const auth = getAuth();
     const listUsersResult = await auth.listUsers(); // Fetch users with default pagination
     const users = listUsersResult.users.map((userRecord: UserRecord) => ({
       uid: userRecord.uid,

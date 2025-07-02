@@ -1,34 +1,116 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { createServer } from 'http';
-import express, { Request, Response, NextFunction } from 'express';
-
+import express, { Request, Response, NextFunction, ErrorRequestHandler } from 'express';
+import corsOrig, { CorsOptions } from 'cors';
+// For ESM + CommonJS compatibility. In Node ESM, importing a CJS module gives a namespace object
+// where the actual export is in the `.default` property. When running via `tsx`/esbuild this
+// sometimes happens and `cors` becomes an object instead of a function, causing "TypeError: cors is not a function".
+// The following line normalises the export so we always have a callable function.
+const cors = (corsOrig as any).default || (corsOrig as any);
+import compression from 'compression';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import { initializeApp, cert, getApps, getApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 // Load environment variables from .env file in the root directory
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+const envPath = path.resolve(process.cwd(), process.env.NODE_ENV === 'test' ? '.env.test' : '.env');
+dotenv.config({ path: envPath });
+
+// Environment configuration
+const isProduction = process.env.NODE_ENV === 'production';
+const isVercel = !!process.env.VERCEL;
+const port = process.env.PORT || 5000;
 
 // Debug log environment variables
-console.log('Environment variables loaded:', {
+console.log('Environment:', {
   NODE_ENV: process.env.NODE_ENV,
-  PORT: process.env.PORT,
+  PORT: port,
+  VERCEL: isVercel,
   FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID ? '***' : 'MISSING',
   FIREBASE_CLIENT_EMAIL: process.env.FIREBASE_CLIENT_EMAIL ? '***' : 'MISSING',
   FIREBASE_PRIVATE_KEY: process.env.FIREBASE_PRIVATE_KEY ? '***' : 'MISSING',
 });
-// Import the necessary Firebase Admin SDK modules
-import { initializeApp, cert, getApps, getApp } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
-import { getStorage } from 'firebase-admin/storage';
 
-// Firebase configuration from environment variables
+// Import Vite configuration
+import { setupVite, serveStatic, log } from './vite';
 
-import { setupVite, serveStatic, log } from "./vite";
-
-// Create Express app and HTTP server
+// Create Express app
 const app = express();
-export default app;
 
-// Only create HTTP server when running standalone (not in Cloud Functions)
-const server = !process.env.K_SERVICE && !process.env.FUNCTIONS_EMULATOR ? createServer(app) : undefined;
+// Trust proxy in production (for Vercel, Heroku, etc.)
+if (isProduction) {
+  app.set('trust proxy', 1);
+}
+
+// Security middleware
+app.use(helmet());
+
+// Configure CORS
+// Normalise package export so we always get the middleware factory function
+const corsFunc = (corsOrig as any).default ?? (corsOrig as any);
+
+const corsOptions: CorsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = isProduction 
+      ? [
+          'https://elite-replicas.vercel.app', 
+          'https://www.elite-replicas.com',
+          'https://elite-replicas.vercel.app',
+          'https://elite-replicas.vercel.app/'
+        ]
+      : [
+          `http://localhost:${port}`,
+          'http://localhost:3000',
+          'http://localhost:5173',
+          'http://127.0.0.1:3000',
+          'http://127.0.0.1:5173'
+        ];
+
+    if (allowedOrigins.includes(origin) || !origin) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  optionsSuccessStatus: 200 // Some legacy browsers choke on 204
+};
+
+// CORS disabled as requested
+// app.use(corsFunc(corsOptions));
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(limiter);
+
+// Compression
+app.use(compression());
+
+// Create HTTP server only when running standalone (not in Cloud Functions)
+// Detect if we are running inside a traditional long-running environment (local dev, Docker, etc.).
+// In serverless platforms like Vercel, AWS Lambda, Cloud Functions, the http server must **NOT** be
+// started manually – the platform will invoke the exported handler for each request.
+const isServerless =
+  // Vercel sets this flag
+  !!process.env.VERCEL ||
+  // Google Cloud Functions
+  !!process.env.K_SERVICE ||
+  // Firebase Functions emulator
+  !!process.env.FUNCTIONS_EMULATOR;
+
+const server = !isServerless ? createServer(app) : undefined;
+
+export default app;
 
 // Middleware to parse JSON and URL-encoded data
 app.use(express.json());

@@ -1,0 +1,33 @@
+# Render Blueprint for full-stack deployment
+services:
+  # Backend service (Node.js)
+  - type: web
+    name: elite-replicas-backend
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: node dist/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Add other backend env vars here (FIREBASE_*, DATABASE_URL, etc.)
+      # These should be set in the Render dashboard
+    plan: free  # or 'starter', 'standard', etc.
+
+  # Frontend service (static files)
+  - type: web
+    name: elite-replicas-frontend
+    staticPublishPath: ./client/dist
+    env: static
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://elite-replicas-backend.onrender.com/$1
+        # ^ Update with your backend service URL
+    plan: free
+
+# Uncomment and configure if using a database
+# databases:
+#   - name: elite-replicas-db
+#     databaseName: elite_replicas
+#     user: admin
+#     plan: free  # or 'starter', 'standard', etc.

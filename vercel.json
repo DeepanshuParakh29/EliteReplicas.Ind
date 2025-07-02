@@ -6,7 +6,7 @@
       "use": "@vercel/node"
     },
     {
-      "src": "dist/public/**/*",
+      "src": "client/dist/**",
       "use": "@vercel/static"
     }
   ],
@@ -16,16 +16,19 @@
       "dest": "/dist/index.js"
     },
     {
-      "src": "/assets/(.*)",
-      "dest": "/dist/public/assets/$1"
-    },
-    {
-      "src": "/.vite/manifest.json",
-      "dest": "/dist/public/.vite/manifest.json"
-    },
-    {
-      "src": "^/(.*)$",
-      "dest": "/dist/public/index.html"
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
-  ]
+  ],
+  "devCommand": "npm run dev",
+  "build": {
+    "env": {
+      "NODE_ENV": "production"
+    }
+  },
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "public": false,
+  "regions": ["bom1"]
 }

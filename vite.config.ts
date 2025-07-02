@@ -1,13 +1,20 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import path from "path";
+import { defineConfig, loadEnv } from 'vite';
+import react from '@vitejs/plugin-react';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
-// Vercel environment variables
-const vercelUrl = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Load environment variables based on mode
+const env = loadEnv('development', process.cwd(), '');
+
+const isProduction = env.NODE_ENV === 'production';
+const isVercel = !!env.VERCEL;
+
+// Base URL for API requests
+const apiBaseUrl = isVercel
+  ? `https://${env.VERCEL_URL}`
   : 'http://localhost:5000';
-
-const isProduction = process.env.NODE_ENV === 'production';
 
 export default defineConfig(({ mode }) => ({
   plugins: [
@@ -25,8 +32,11 @@ export default defineConfig(({ mode }) => ({
   base: isProduction ? '/' : '/',
   publicDir: 'public',
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir: path.resolve(__dirname, 'dist/public'),
+    assetsDir: 'assets',
     emptyOutDir: true,
+    sourcemap: isProduction ? 'hidden' : true,
+    minify: isProduction ? 'esbuild' : false,
     manifest: true,
     rollupOptions: {
       input: path.resolve(import.meta.dirname, "client/index.html"),
@@ -36,7 +46,6 @@ export default defineConfig(({ mode }) => ({
         assetFileNames: 'assets/[name]-[hash][extname]',
       },
     },
-    sourcemap: true,
   },
   define: {
     'import.meta.env.VITE_API_URL': JSON.stringify(
@@ -45,10 +54,12 @@ export default defineConfig(({ mode }) => ({
   },
   server: {
     port: 3000,
+    strictPort: true,
     proxy: {
-      '/api': {
-        target: vercelUrl,
+      '^/api/.*': {
+        target: apiBaseUrl,
         changeOrigin: true,
+        secure: false,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
@@ -57,7 +68,7 @@ export default defineConfig(({ mode }) => ({
     port: 3000,
     proxy: {
       '/api': {
-        target: vercelUrl,
+        target: apiBaseUrl,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },

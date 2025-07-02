@@ -1,0 +1,10 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+
+# Disallow admin and API endpoints
+Disallow: /admin/
+Disallow: /api/
+
+# Sitemap location
+Sitemap: https://elite-replicas.vercel.app/sitemap.xml

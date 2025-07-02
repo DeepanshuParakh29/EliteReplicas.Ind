@@ -4,6 +4,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { readFileSync, existsSync } from 'fs';
 
 declare global {
   namespace NodeJS {
@@ -11,6 +12,7 @@ declare global {
       FIREBASE_DATABASE_URL?: string;
       FIREBASE_STORAGE_BUCKET_ADMIN?: string;
       FIREBASE_PROJECT_ID?: string;
+      FIREBASE_SERVICE_ACCOUNT?: string;
     }
   }
 }
@@ -24,25 +26,47 @@ let firebaseApp;
 
 if (!getApps().length) {
   try {
-    // Prefer SERVICE ACCOUNT from env to avoid bundling secrets in repo
-    let credentialParam: any;
+    // For development, use local file if it exists
+    const serviceAccountPath = path.resolve(process.cwd(), 'firebase-service-account.json');
+    let credentialParam: any = serviceAccountPath;
+    
+    // Check if we should use environment variable or file
     if (process.env.FIREBASE_SERVICE_ACCOUNT) {
       try {
         credentialParam = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        if (!credentialParam.private_key) {
+          console.warn('FIREBASE_SERVICE_ACCOUNT provided but missing private_key – falling back to individual env vars (if present)');
+          credentialParam = undefined as any; // trigger next condition
+        }
+        console.log('Using Firebase service account from environment variable');
       } catch (err) {
         console.error('Invalid FIREBASE_SERVICE_ACCOUNT – must be a valid JSON string');
         throw err;
       }
+    }
+    if (!credentialParam && process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+      credentialParam = {
+        project_id: process.env.FIREBASE_PROJECT_ID,
+        client_email: process.env.FIREBASE_CLIENT_EMAIL,
+        private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      };
+      console.log('Using Firebase service account from individual env vars');
+    } else if (existsSync(serviceAccountPath)) {
+      try {
+        credentialParam = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
+        console.log(`Using Firebase service account from file: ${serviceAccountPath}`);
+      } catch (err) {
+        console.error('Error reading Firebase service account file:', err);
+        throw err;
+      }
     } else {
-      credentialParam = path.resolve(__dirname, '../../server/firebase-service-account.json');
+      throw new Error('No Firebase service account found. Please set FIREBASE_SERVICE_ACCOUNT environment variable or provide firebase-service-account.json');
     }
 
     const firebaseConfig = {
-      credential: cert(credentialParam as any),
-      databaseURL: process.env.FIREBASE_DATABASE_URL,
-      storageBucket:
-        process.env.FIREBASE_STORAGE_BUCKET_ADMIN ||
-        `${process.env.FIREBASE_PROJECT_ID}.appspot.com`,
+      credential: cert(credentialParam),
+      databaseURL: process.env.FIREBASE_DATABASE_URL || `https://${credentialParam.project_id}.firebaseio.com`,
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET_ADMIN || `${credentialParam.project_id}.appspot.com`,
     };
     
     firebaseApp = initializeApp(firebaseConfig);
